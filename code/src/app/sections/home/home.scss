@@ -3,6 +3,13 @@
   padding: 1rem 1.25rem 2.5rem;
 }
 
+.hero-logo {
+  display: block;
+  height: clamp(120px, 22vw, 168px);
+  width: auto;
+  margin: 0 auto 0.75rem;
+}
+
 .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -59,6 +66,10 @@
 
 .step {
   text-align: center;
+}
+
+.step h3 sup {
+  font-size: 0.6em;
 }
 
 .step-num {
