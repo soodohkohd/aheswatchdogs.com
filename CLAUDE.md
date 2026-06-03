@@ -217,17 +217,26 @@ Three steps, all required before serving on campus:
 Videos are **NOT** in `code/public/` — they're hosted in **Azure Blob Storage** and referenced as full HTTPS URLs in component data (same pattern as robbmorgan.com). Reason: `pm2 serve` (the Linux App Service static server) doesn't honor HTTP **Range** requests, and **Safari refuses to play `<video>` without Range support**. Blob Storage supports Range natively (verified: ranged GET → `206 Partial Content`).
 
 - **Account/container:** `aheswatchdogsmedia` / `media`, in resource group **`ahes`** (westus), anonymous blob read enabled. Base URL: `https://aheswatchdogsmedia.blob.core.windows.net/media/`.
-- **Current media:** the two training videos, embedded as `<video controls>` players in [enroll.ts](code/src/app/sections/enroll/enroll.ts) / [enroll.html](code/src/app/sections/enroll/enroll.html):
-  - `foundational-playground-practices.mp4` (~471 MB)
-  - `supporting-conflict-resolution.mp4` (~274 MB)
-- **Source files** live in [artifacts/](artifacts/) but are **gitignored** (`artifacts/*.mp4`) — too large for git; blob storage is the system of record.
-- **Add/replace a video:**
+- **Current media:** the two training videos, embedded as `<video controls preload="metadata">` players in [enroll.ts](code/src/app/sections/enroll/enroll.ts) / [enroll.html](code/src/app/sections/enroll/enroll.html). Re-encoded to **720p H.264** + fast-start:
+  - `foundational-playground-practices.mp4` (~50 MB, was 471 MB)
+  - `supporting-conflict-resolution.mp4` (~37 MB, was 274 MB)
+- **Source files** (original full-res) live in [artifacts/](artifacts/) but are **gitignored** (`artifacts/*.mp4`) — blob storage holds the optimized, served copies and is the system of record.
+- **Two MP4 requirements for the served files** (both critical):
+  1. **Fast-start** — the `moov` atom MUST be at the front, or the browser downloads almost the whole file before it can play/seek. Verify: `curl -s -r 0-262143 <url> | grep -aob moov` should report an offset near 0 (ours is 36).
+  2. **Reasonable size** — re-encode to 720p; full-res screen-recordings are needlessly huge.
+- **Add/replace a video** (encode → upload, both steps):
   ```bash
+  # 1) Encode: 720p, H.264 CRF 23, AAC 128k, fast-start (lossy, big size win)
+  ffmpeg -i "artifacts/<Source>.mp4" -vf "scale=-2:720" -c:v libx264 -preset medium \
+    -crf 23 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart "/tmp/<name>.mp4"
+  # (lossless alternative — keep quality, just fix streaming: -c copy -movflags +faststart)
+
+  # 2) Upload (overwrite)
   KEY=$(az storage account keys list -g ahes -n aheswatchdogsmedia --query '[0].value' -o tsv)
   az storage blob upload --account-name aheswatchdogsmedia --account-key "$KEY" \
-    -c media -n <name>.mp4 -f "artifacts/<Source>.mp4" --content-type video/mp4 --overwrite
+    -c media -n <name>.mp4 -f "/tmp/<name>.mp4" --content-type video/mp4 --overwrite
   ```
-  Then reference the full HTTPS URL in component data. Don't drop videos in `code/public/` — they'd "work" in Chrome but silently break Safari and bloat the deploy zip.
+  Reference the full HTTPS URL in component data. Don't drop videos in `code/public/` — they'd "work" in Chrome but silently break Safari and bloat the deploy zip.
 
 ## Deployment (DONE — live)
 
