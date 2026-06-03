@@ -7,6 +7,85 @@
     <li class="card">
       <h2><span class="num">1</span> Watch D.O.G.S. registration form</h2>
       <p>Complete the form below — it replaces the paper registration form.</p>
+
+      @if (submitted()) {
+        <div class="success" role="status">
+          <h3>Thanks for signing up! 🐾</h3>
+          <p>
+            You’re registered as <strong>{{ submittedEmail() }}</strong>. When you’re ready to pick
+            days on campus, head to the <a routerLink="/schedule">Schedule</a> and
+            <strong>sign in with your email</strong> — we’ll send you a 6-digit code to confirm it’s
+            you. No password to remember.
+          </p>
+          <p>
+            Next, complete steps 2 and 3 below if you haven’t yet — register with the PTA and watch
+            both training videos.
+          </p>
+        </div>
+      } @else {
+        <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+          <div class="field">
+            <label for="name">Name</label>
+            <input id="name" type="text" formControlName="name" autocomplete="name" [class.invalid]="showError('name')" />
+            @if (showError('name')) {
+              <p class="field-error">Please enter your name.</p>
+            }
+          </div>
+
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" type="email" formControlName="email" autocomplete="email" [class.invalid]="showError('email')" />
+            @if (showError('email')) {
+              <p class="field-error">Please enter a valid email address.</p>
+            }
+          </div>
+
+          <div class="field">
+            <label for="mobile">Mobile</label>
+            <input id="mobile" type="tel" formControlName="mobile" autocomplete="tel" [class.invalid]="showError('mobile')" />
+            @if (showError('mobile')) {
+              <p class="field-error">Please enter a mobile number.</p>
+            }
+          </div>
+
+          <div class="field">
+            <label for="students">Student(s) <span class="optional">(optional)</span></label>
+            <textarea
+              id="students"
+              formControlName="students"
+              rows="3"
+              placeholder="Student name(s) and grade(s)"
+            ></textarea>
+          </div>
+
+          <div class="field">
+            <label for="availability">Availability <span class="optional">(optional)</span></label>
+            <textarea
+              id="availability"
+              formControlName="availability"
+              rows="3"
+              placeholder="Which days/times generally work for you?"
+            ></textarea>
+          </div>
+
+          <div class="field">
+            <label for="shirtSize">T-shirt size</label>
+            <select id="shirtSize" formControlName="shirtSize">
+              @for (size of shirtSizes; track size) {
+                <option [value]="size">{{ size }}</option>
+              }
+            </select>
+          </div>
+
+          @if (error()) {
+            <p class="error" role="alert">{{ error() }}</p>
+          }
+
+          <button class="btn" type="submit" [disabled]="submitting()">
+            {{ submitting() ? 'Submitting…' : 'Submit registration' }}
+          </button>
+        </form>
+      }
     </li>
     <li class="card">
       <h2><span class="num">2</span> Register with the AHES PTA</h2>
@@ -21,6 +100,12 @@
     <li class="card">
       <h2><span class="num">3</span> Complete the training videos</h2>
       <p>Both videos must be completed before volunteering on campus.</p>
+      <p class="track-note">
+        ⚠️ <strong>Watching here doesn’t count toward your record.</strong> These previews are for
+        reference only. To get credit, watch them while <strong>signed in</strong> on the
+        <a routerLink="/schedule">Schedule</a> — each video is automatically checked off your
+        account when you finish it there.
+      </p>
       <div class="videos">
         @for (video of trainingVideos; track video.src) {
           <figure class="training-video">
@@ -31,87 +116,4 @@
       </div>
     </li>
   </ol>
-
-  <div class="card form-card">
-    <h2>Registration form</h2>
-
-    @if (submitted()) {
-      <div class="success" role="status">
-        <h3>Thanks for signing up! 🐾</h3>
-        <p>
-          You’re registered as <strong>{{ submittedEmail() }}</strong>. When you’re ready to pick
-          days on campus, head to the <a routerLink="/schedule">Schedule</a> and
-          <strong>sign in with your email</strong> — we’ll send you a 6-digit code to confirm it’s
-          you. No password to remember.
-        </p>
-        <p>
-          Next, complete steps 2 and 3 above if you haven’t yet — register with the PTA and watch
-          both training videos.
-        </p>
-      </div>
-    } @else {
-      <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
-        <div class="field">
-          <label for="name">Name</label>
-          <input id="name" type="text" formControlName="name" autocomplete="name" [class.invalid]="showError('name')" />
-          @if (showError('name')) {
-            <p class="field-error">Please enter your name.</p>
-          }
-        </div>
-
-        <div class="field">
-          <label for="email">Email</label>
-          <input id="email" type="email" formControlName="email" autocomplete="email" [class.invalid]="showError('email')" />
-          @if (showError('email')) {
-            <p class="field-error">Please enter a valid email address.</p>
-          }
-        </div>
-
-        <div class="field">
-          <label for="mobile">Mobile</label>
-          <input id="mobile" type="tel" formControlName="mobile" autocomplete="tel" [class.invalid]="showError('mobile')" />
-          @if (showError('mobile')) {
-            <p class="field-error">Please enter a mobile number.</p>
-          }
-        </div>
-
-        <div class="field">
-          <label for="students">Student(s) <span class="optional">(optional)</span></label>
-          <textarea
-            id="students"
-            formControlName="students"
-            rows="3"
-            placeholder="Student name(s) and grade(s)"
-          ></textarea>
-        </div>
-
-        <div class="field">
-          <label for="availability">Availability <span class="optional">(optional)</span></label>
-          <textarea
-            id="availability"
-            formControlName="availability"
-            rows="3"
-            placeholder="Which days/times generally work for you?"
-          ></textarea>
-        </div>
-
-        <div class="field">
-          <label for="shirtSize">T-shirt size</label>
-          <select id="shirtSize" formControlName="shirtSize">
-            @for (size of shirtSizes; track size) {
-              <option [value]="size">{{ size }}</option>
-            }
-          </select>
-        </div>
-
-        @if (error()) {
-          <p class="error" role="alert">{{ error() }}</p>
-        }
-
-        <button class="btn" type="submit" [disabled]="submitting()">
-          {{ submitting() ? 'Submitting…' : 'Submit registration' }}
-        </button>
-      </form>
-    }
-  </div>
 </section>

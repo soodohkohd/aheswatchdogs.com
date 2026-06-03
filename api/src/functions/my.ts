@@ -4,7 +4,18 @@ import { RestError } from '@azure/data-tables';
 import { getTable } from '../storage/tables';
 import { json, preflight } from '../http';
 import { authenticateVolunteer } from '../session';
-import { MyShiftRequest, RosterDay, ShiftEntity, TABLES, VolunteerEntity } from '../models';
+import {
+  EnrollmentEntity,
+  EnrollmentState,
+  MyShiftRequest,
+  RosterDay,
+  ShiftEntity,
+  TABLES,
+  TRAINING_VIDEOS,
+  TRAINING_VIDEO_SLUGS,
+  VolunteerEntity,
+  WatchVideoRequest,
+} from '../models';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -200,8 +211,103 @@ export async function myAccountDelete(request: HttpRequest, context: InvocationC
   }
 }
 
+// ---------- enrollment / training videos ----------
+
+/** Parse the stored CSV of watched slugs into a clean set (canonical only). */
+function parseWatched(csv: string | undefined): Set<string> {
+  const set = new Set<string>();
+  for (const raw of (csv ?? '').split(',')) {
+    const slug = raw.trim();
+    if (slug && TRAINING_VIDEO_SLUGS.includes(slug)) set.add(slug);
+  }
+  return set;
+}
+
+/** Shape an enrollment row (or its absence) for the volunteer-facing view. */
+function toState(row: EnrollmentEntity | null): EnrollmentState {
+  const watched = parseWatched(row?.videosWatched);
+  return {
+    formCompleted: row?.formCompleted ?? false,
+    ptaRegistered: row?.ptaRegistered ?? false,
+    trainingVideosCompleted: TRAINING_VIDEO_SLUGS.every((s) => watched.has(s)),
+    videos: TRAINING_VIDEOS.map((v) => ({ slug: v.slug, title: v.title, watched: watched.has(v.slug) })),
+  };
+}
+
+async function readEnrollment(volunteerId: string): Promise<EnrollmentEntity | null> {
+  const enrollment = await getTable(TABLES.enrollment);
+  try {
+    return await enrollment.getEntity<EnrollmentEntity>(volunteerId, 'status');
+  } catch (err) {
+    if (err instanceof RestError && err.statusCode === 404) return null;
+    throw err;
+  }
+}
+
+/** GET /api/my/enrollment → the signed-in volunteer's checklist + per-video
+ *  watched flags. */
+export async function myEnrollment(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  if (request.method === 'OPTIONS') return preflight();
+  const auth = authenticateVolunteer(request);
+  if (!auth.ok) return json(auth.status, { errors: [auth.error] });
+
+  try {
+    return json(200, toState(await readEnrollment(auth.volunteerId)));
+  } catch (err) {
+    context.error('my: enrollment read failed', err);
+    return json(500, { errors: ['Could not load your enrollment status. Please try again later.'] });
+  }
+}
+
+/** POST /api/my/enrollment/video { video } → record that the signed-in
+ *  volunteer finished a training video. Idempotent; recomputes
+ *  trainingVideosCompleted (true only when every canonical video is watched). */
+export async function myWatchVideo(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  if (request.method === 'OPTIONS') return preflight();
+  const auth = authenticateVolunteer(request);
+  if (!auth.ok) return json(auth.status, { errors: [auth.error] });
+
+  let body: WatchVideoRequest;
+  try {
+    body = (await request.json()) as WatchVideoRequest;
+  } catch {
+    return json(400, { errors: ['Invalid JSON body.'] });
+  }
+  const video = typeof body.video === 'string' ? body.video.trim() : '';
+  if (!TRAINING_VIDEO_SLUGS.includes(video)) {
+    return json(400, { errors: ['Unknown training video.'] });
+  }
+
+  try {
+    const enrollment = await getTable(TABLES.enrollment);
+    const now = new Date().toISOString();
+    const existing = await readEnrollment(auth.volunteerId);
+    const watched = parseWatched(existing?.videosWatched);
+    watched.add(video);
+    const trainingVideosCompleted = TRAINING_VIDEO_SLUGS.every((s) => watched.has(s));
+
+    const row: EnrollmentEntity = {
+      partitionKey: auth.volunteerId,
+      rowKey: 'status',
+      formCompleted: existing?.formCompleted ?? true,
+      ptaRegistered: existing?.ptaRegistered ?? false,
+      trainingVideosCompleted,
+      videosWatched: [...watched].join(','),
+      videosUpdatedAt: now,
+      updatedAt: now,
+    };
+    await enrollment.upsertEntity(row, 'Merge');
+    return json(200, toState(row));
+  } catch (err) {
+    context.error('my: watch video failed', err);
+    return json(500, { errors: ['Could not record the video. Please try again later.'] });
+  }
+}
+
 app.http('my-session', { methods: ['GET', 'OPTIONS'], authLevel: 'anonymous', route: 'my/session', handler: mySession });
 app.http('my-shifts', { methods: ['GET', 'POST', 'OPTIONS'], authLevel: 'anonymous', route: 'my/shifts', handler: myShifts });
 app.http('my-shifts-remove', { methods: ['POST', 'OPTIONS'], authLevel: 'anonymous', route: 'my/shifts/remove', handler: myShiftRemove });
 app.http('my-roster', { methods: ['GET', 'OPTIONS'], authLevel: 'anonymous', route: 'my/roster', handler: myRoster });
 app.http('my-account-delete', { methods: ['POST', 'OPTIONS'], authLevel: 'anonymous', route: 'my/account/delete', handler: myAccountDelete });
+app.http('my-enrollment', { methods: ['GET', 'OPTIONS'], authLevel: 'anonymous', route: 'my/enrollment', handler: myEnrollment });
+app.http('my-watch-video', { methods: ['POST', 'OPTIONS'], authLevel: 'anonymous', route: 'my/enrollment/video', handler: myWatchVideo });

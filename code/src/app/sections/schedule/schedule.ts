@@ -1,12 +1,30 @@
-import { Component, OnInit, computed, effect, inject, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  OnInit,
+  computed,
+  effect,
+  inject,
+  signal,
+  viewChildren,
+} from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
 import { ShiftsService } from '../../shifts.service';
 import { MyShiftsService } from '../../my-shifts.service';
+import { EnrollmentService } from '../../enrollment.service';
 import { VolunteerAuthService } from '../../volunteer-auth.service';
 import { MonthCalendar } from '../../shared/month-calendar/month-calendar';
-import { RosterPerson } from '../../models';
+import { EnrollmentState, RosterPerson } from '../../models';
+
+/** A training video player with its canonical slug (matches the API's
+ *  TRAINING_VIDEOS). Self-hosted on Azure Blob Storage (Range-capable). */
+interface TrainingVideo {
+  slug: string;
+  title: string;
+  src: string;
+}
 
 interface DayRow {
   date: string;
@@ -15,6 +33,11 @@ interface DayRow {
 }
 
 const WEEKDAYS_AHEAD = 15;
+
+/** How far past the furthest-watched point a video may jump before we treat it
+ *  as a fast-forward attempt and snap it back. Generous enough for normal
+ *  timeupdate granularity, tight enough to block scrubbing ahead. */
+const FORWARD_TOLERANCE_SEC = 1.5;
 
 @Component({
   selector: 'app-schedule',
@@ -26,7 +49,32 @@ export class Schedule implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly shiftsService = inject(ShiftsService);
   private readonly myShifts = inject(MyShiftsService);
+  private readonly enrollmentService = inject(EnrollmentService);
   protected readonly auth = inject(VolunteerAuthService);
+
+  // ---- Training videos / enrollment progress (logged-in) ----
+  // Slugs MUST match the API's TRAINING_VIDEOS (api/src/models.ts).
+  protected readonly trainingVideos: TrainingVideo[] = [
+    {
+      slug: 'foundational-playground-practices',
+      title: 'Foundational Playground Practices',
+      src: 'https://aheswatchdogsmedia.blob.core.windows.net/media/foundational-playground-practices.mp4',
+    },
+    {
+      slug: 'supporting-conflict-resolution',
+      title: 'Supporting Conflict Resolution',
+      src: 'https://aheswatchdogsmedia.blob.core.windows.net/media/supporting-conflict-resolution.mp4',
+    },
+  ];
+  protected readonly enrollment = signal<EnrollmentState | null>(null);
+  /** Slug currently being saved after its video ended (shows a "Saving…" hint). */
+  protected readonly savingVideo = signal<string | null>(null);
+  /** The gate's <video> elements — used to enforce one-at-a-time playback. */
+  private readonly videoEls = viewChildren<ElementRef<HTMLVideoElement>>('vid');
+  /** Furthest point (seconds) each video has been watched to, so the volunteer
+   *  can't scrub ahead. Not persisted — resets per page load until the video is
+   *  marked watched, after which seeking is unrestricted. */
+  private readonly watchedTo = new Map<string, number>();
 
   protected readonly calMonth = signal(this.firstOfThisMonth());
   protected readonly loading = signal(true);
@@ -75,6 +123,7 @@ export class Schedule implements OnInit {
         this.selectedDate.set(null);
         this.counts.set(new Map());
         this.roster.set(new Map());
+        this.enrollment.set(null);
         this.reloadCurrentAndMine();
       }
     });
@@ -105,13 +154,69 @@ export class Schedule implements OnInit {
     const to = monthEnd > this.addDays(today, 56) ? monthEnd : this.addDays(today, 56);
     const from = today < this.iso(this.calMonth()) ? today : this.iso(this.calMonth());
     this.loadRange(from, to, true);
-    if (this.auth.loggedIn()) this.loadMyDates();
+    if (this.auth.loggedIn()) {
+      this.loadMyDates();
+      this.loadEnrollment();
+    }
   }
 
   private loadMyDates(): void {
     this.myShifts.myDates().subscribe({
       next: ({ dates }) => this.myDates.set(dates),
       error: () => {},
+    });
+  }
+
+  private loadEnrollment(): void {
+    this.enrollmentService.get().subscribe({
+      next: (state) => this.enrollment.set(state),
+      error: () => {},
+    });
+  }
+
+  // ---------- training videos ----------
+
+  protected isWatched(slug: string): boolean {
+    return this.enrollment()?.videos.find((v) => v.slug === slug)?.watched ?? false;
+  }
+
+  protected readonly allVideosWatched = computed(
+    () => this.enrollment()?.trainingVideosCompleted ?? false,
+  );
+
+  /** One video plays at a time: starting one pauses all the others. */
+  protected onVideoPlay(event: Event): void {
+    const playing = event.target as HTMLVideoElement;
+    for (const ref of this.videoEls()) {
+      if (ref.nativeElement !== playing) ref.nativeElement.pause();
+    }
+  }
+
+  /** Block fast-forwarding: a video may only advance to where it's already been
+   *  watched (plus a small tolerance for normal playback). Jumps ahead snap back
+   *  to the furthest-watched point. Rewinding is always allowed, and once a
+   *  video is marked watched, seeking is unrestricted. */
+  protected onVideoProgress(event: Event, slug: string): void {
+    if (this.isWatched(slug)) return;
+    const el = event.target as HTMLVideoElement;
+    const limit = this.watchedTo.get(slug) ?? 0;
+    if (el.currentTime > limit + FORWARD_TOLERANCE_SEC) {
+      el.currentTime = limit; // tried to skip ahead — pull it back
+    } else if (el.currentTime > limit) {
+      this.watchedTo.set(slug, el.currentTime); // normal playback — advance the limit
+    }
+  }
+
+  /** A training video reached its end → record completion for this volunteer. */
+  protected onVideoEnded(slug: string): void {
+    if (this.isWatched(slug) || this.savingVideo()) return;
+    this.savingVideo.set(slug);
+    this.enrollmentService.markVideoWatched(slug).subscribe({
+      next: (state) => {
+        this.enrollment.set(state);
+        this.savingVideo.set(null);
+      },
+      error: () => this.savingVideo.set(null),
     });
   }
 
@@ -342,6 +447,8 @@ export class Schedule implements OnInit {
     this.auth.signOut();
     this.myDates.set([]);
     this.selectedDate.set(null);
+    this.enrollment.set(null);
+    this.watchedTo.clear();
     this.confirmingDelete.set(false);
     this.resetLogin();
     this.emailForm.reset({ email: '' });

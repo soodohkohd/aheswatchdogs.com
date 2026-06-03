@@ -42,6 +42,21 @@ export interface EnrollmentStatus {
   trainingVideosCompleted: boolean;
 }
 
+/** One training video with the signed-in volunteer's watched flag. */
+export interface VideoState {
+  slug: string;
+  title: string;
+  watched: boolean;
+}
+
+/** Volunteer-facing enrollment state (GET /api/my/enrollment). */
+export interface EnrollmentState {
+  formCompleted: boolean;
+  ptaRegistered: boolean;
+  trainingVideosCompleted: boolean;
+  videos: VideoState[];
+}
+
 /** Public schedule: how many Watch D.O.G.S. are signed up per day (no names). */
 export interface ShiftDayCount {
   date: string; // YYYY-MM-DD

@@ -3,7 +3,11 @@
   <h1>Watch D.O.G.S. Schedule</h1>
   <p class="lede">
     @if (auth.loggedIn()) {
-      Sign up for days on campus, manage the days you’re on, and see who else is signed up.
+      @if (enrollment() && !allVideosWatched()) {
+        First, finish your two training videos below — then you can sign up for days on campus.
+      } @else {
+        Sign up for days on campus, manage the days you’re on, and see who else is signed up.
+      }
     } @else {
       See which days have Watch D.O.G.S. on campus. <strong>Sign in with your email</strong> to<br />
       sign up for days and see who’s on. Not a volunteer yet?
@@ -23,6 +27,47 @@
     </div>
   }
 
+  @if (auth.loggedIn() && enrollment() === null) {
+    <!-- Logged in, training status still loading: don't flash the wrong view. -->
+    <div class="card loading-card"><p class="muted">Loading your training status…</p></div>
+  } @else if (auth.loggedIn() && !allVideosWatched()) {
+    <!-- Gate: must finish the training videos before the schedule is shown. -->
+    <div class="video-gate">
+      <div class="card training">
+        <h2>Training videos</h2>
+        <p class="muted">
+          Watch both videos to the end and the schedule unlocks. Each video is checked off
+          automatically when you finish it, and your progress saves to your account.
+        </p>
+        <ul class="video-list">
+          @for (video of trainingVideos; track video.slug) {
+            <li>
+              <div class="video-head">
+                <span class="video-title">{{ video.title }}</span>
+                @if (isWatched(video.slug)) {
+                  <span class="watched-tag">✓ Watched</span>
+                } @else if (savingVideo() === video.slug) {
+                  <span class="saving-tag muted">Saving…</span>
+                }
+              </div>
+              <video
+                #vid
+                controls
+                controlsList="nodownload noplaybackrate"
+                disablePictureInPicture
+                preload="metadata"
+                [src]="video.src"
+                (play)="onVideoPlay($event)"
+                (timeupdate)="onVideoProgress($event, video.slug)"
+                (seeking)="onVideoProgress($event, video.slug)"
+                (ended)="onVideoEnded(video.slug)"
+              ></video>
+            </li>
+          }
+        </ul>
+      </div>
+    </div>
+  } @else {
   <div class="layout">
     <div class="schedule-main">
       <!-- Desktop: month calendar -->
@@ -231,4 +276,5 @@
       }
     </div>
   </div>
+  }
 </section>

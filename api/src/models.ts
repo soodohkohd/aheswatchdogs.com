@@ -53,6 +53,19 @@ export interface VolunteerEntity extends TableEntity {
   loginCodeAttempts?: number;
 }
 
+/** Canonical training videos, by stable slug. `trainingVideosCompleted` is
+ *  true only when every slug here has been watched. Adding a video here makes
+ *  it required; the slugs are persisted in `Enrollment.videosWatched`. */
+export interface TrainingVideo {
+  slug: string;
+  title: string;
+}
+export const TRAINING_VIDEOS: TrainingVideo[] = [
+  { slug: 'foundational-playground-practices', title: 'Foundational Playground Practices' },
+  { slug: 'supporting-conflict-resolution', title: 'Supporting Conflict Resolution' },
+];
+export const TRAINING_VIDEO_SLUGS: string[] = TRAINING_VIDEOS.map((v) => v.slug);
+
 /** `Enrollment` table — PartitionKey = volunteer id, RowKey 'status'.
  *  Mirrors the brochure's 3-step checklist. */
 export interface EnrollmentEntity extends TableEntity {
@@ -60,8 +73,27 @@ export interface EnrollmentEntity extends TableEntity {
   rowKey: 'status';
   formCompleted: boolean;
   ptaRegistered: boolean;
+  /** Derived: true once every TRAINING_VIDEOS slug appears in videosWatched. */
   trainingVideosCompleted: boolean;
+  /** CSV of watched video slugs (per-video progress). Order-insensitive. */
+  videosWatched?: string;
+  /** ISO timestamp a video-watch was last recorded. */
+  videosUpdatedAt?: string;
   updatedAt: string;
+}
+
+/** Volunteer-facing enrollment state (GET /api/my/enrollment). */
+export interface EnrollmentState {
+  formCompleted: boolean;
+  ptaRegistered: boolean;
+  trainingVideosCompleted: boolean;
+  /** Per-video watched flags, in canonical order. */
+  videos: Array<{ slug: string; title: string; watched: boolean }>;
+}
+
+/** Payload to record a watched training video. */
+export interface WatchVideoRequest {
+  video: string; // a TRAINING_VIDEOS slug
 }
 
 /** Passwordless login: request a 6-digit code, then exchange it for a session. */
