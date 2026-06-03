@@ -1,0 +1,97 @@
+<section class="container">
+  <p class="eyebrow">On campus</p>
+  <h1>Watch D.O.G.S. Schedule</h1>
+  <p class="lede">
+    See which days have Watch D.O.G.S. signed up and claim a day of your own. Already registered? Just
+    enter your email and pick a day. Not yet? <a routerLink="/enroll">Join Watch D.O.G.S. first</a>.
+  </p>
+
+  <div class="layout">
+    <div class="schedule-main">
+      <!-- Desktop: month calendar -->
+      <div class="card calendar-card desktop-only">
+        <app-month-calendar [month]="calMonth()" (monthChange)="onMonthChange($event)">
+          <ng-template #dayCell let-date let-day="day" let-inMonth="inMonth" let-isPast="isPast" let-isWeekend="isWeekend">
+            @if (inMonth && !isWeekend && !isPast) {
+              <button
+                type="button"
+                class="cal-cell selectable"
+                [class.selected]="isSelected(date)"
+                (click)="pick(date)"
+              >
+                <span class="cal-day">{{ day }}</span>
+                <span class="cal-count" [class.zero]="countFor(date) === 0">
+                  {{ countFor(date) }}
+                </span>
+              </button>
+            } @else {
+              <div class="cal-cell dim">
+                <span class="cal-day">{{ day }}</span>
+              </div>
+            }
+          </ng-template>
+        </app-month-calendar>
+        <p class="cal-legend muted">Number = Watch D.O.G.S. signed up. Click a weekday to choose it.</p>
+      </div>
+
+      <!-- Mobile: upcoming-days list -->
+      <div class="card days mobile-only">
+        <h2>Upcoming days</h2>
+        @if (loading()) {
+          <p class="muted">Loading the schedule…</p>
+        } @else {
+          <ul>
+            @for (day of upcomingDays(); track day.date) {
+              <li [class.selected]="isSelected(day.date)">
+                <div class="day-info">
+                  <span class="day-label">{{ day.label }}</span>
+                  <span class="day-count">
+                    @if (day.count === 0) {
+                      No volunteers yet
+                    } @else {
+                      {{ day.count }} signed up
+                    }
+                  </span>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm" (click)="pick(day.date)">
+                  {{ isSelected(day.date) ? 'Selected' : 'Choose' }}
+                </button>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    </div>
+
+    <div class="card signup">
+      <h2>Sign up for a day</h2>
+      <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+        <div class="field">
+          <label for="email">Your registered email</label>
+          <input id="email" type="email" formControlName="email" autocomplete="email" />
+        </div>
+
+        <div class="field">
+          <label for="date">Day</label>
+          <select id="date" formControlName="date">
+            <option value="" disabled>Choose a day…</option>
+            @for (day of upcomingDays(); track day.date) {
+              <option [value]="day.date">{{ day.label }}</option>
+            }
+          </select>
+        </div>
+
+        @if (error()) {
+          <p class="error" role="alert">{{ error() }}</p>
+        }
+        @if (confirmation()) {
+          <p class="confirm" role="status">{{ confirmation() }}</p>
+        }
+
+        <button class="btn" type="submit" [disabled]="submitting()">
+          {{ submitting() ? 'Signing up…' : 'Sign up for this day' }}
+        </button>
+      </form>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,19 @@
+<div class="mc-header">
+  <button type="button" class="mc-nav" (click)="prev()" aria-label="Previous month">‹</button>
+  <span class="mc-label">{{ monthLabel() }}</span>
+  <button type="button" class="mc-nav" (click)="next()" aria-label="Next month">›</button>
+</div>
+
+<div class="mc-weekdays">
+  @for (wd of weekdays; track wd) {
+    <span class="mc-weekday">{{ wd }}</span>
+  }
+</div>
+
+<div class="mc-grid">
+  @for (cell of cells(); track cell.$implicit) {
+    <div class="mc-day" [class.mc-out]="!cell.inMonth">
+      <ng-container [ngTemplateOutlet]="dayCell() ?? null" [ngTemplateOutletContext]="cell" />
+    </div>
+  }
+</div>

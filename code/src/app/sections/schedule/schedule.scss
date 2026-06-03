@@ -1,0 +1,203 @@
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ah-red);
+  margin-bottom: 0.4rem;
+}
+
+.lede {
+  color: var(--ink-soft);
+  font-size: 1.05rem;
+  max-width: 640px;
+  margin-bottom: 1.5rem;
+}
+
+/* Mobile-first single column; calendar hidden, list shown. */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+/* Mobile: sign-up form first, then the upcoming-days list. */
+.signup {
+  order: -1;
+}
+
+.desktop-only {
+  display: none;
+}
+
+@media (min-width: 820px) {
+  .layout {
+    grid-template-columns: 2fr 1fr;
+  }
+  /* Desktop: calendar (left) then sign-up (right) in source order. */
+  .signup {
+    order: 0;
+  }
+  .desktop-only {
+    display: block;
+  }
+  .mobile-only {
+    display: none;
+  }
+}
+
+/* ---- Mobile list ---- */
+.days ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.days li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.days li:last-child {
+  border-bottom: 0;
+}
+
+.days li.selected {
+  background: var(--ah-green-soft);
+  border-radius: 8px;
+}
+
+.day-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.day-label {
+  font-weight: 600;
+}
+
+.day-count {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+/* ---- Desktop calendar cells (projected into <app-month-calendar>) ---- */
+.cal-cell {
+  width: 100%;
+  height: 100%;
+  min-height: 76px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  padding: 0.4rem;
+  border-radius: 8px;
+}
+
+.cal-cell.selectable {
+  cursor: pointer;
+}
+
+.cal-cell.selectable:hover {
+  background: var(--ah-green-soft);
+}
+
+.cal-cell.selected {
+  outline: 2px solid var(--ah-green);
+  background: var(--ah-green-soft);
+}
+
+.cal-cell.dim {
+  color: #c2c2c2;
+}
+
+.cal-day {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.cal-cell.dim .cal-day {
+  color: #c2c2c2;
+}
+
+.cal-count {
+  align-self: center;
+  margin-top: auto;
+  font-weight: 700;
+  color: #fff;
+  background: var(--ah-green);
+  border-radius: 999px;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  padding: 0 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+}
+
+.cal-count.zero {
+  background: #eee;
+  color: #aaa;
+}
+
+.cal-legend {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+}
+
+/* ---- Sign-up form ---- */
+.field {
+  margin-bottom: 1rem;
+}
+
+.field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  font: inherit;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.field input:focus,
+.field select:focus {
+  outline: 2px solid var(--ah-green);
+  outline-offset: 1px;
+  border-color: var(--ah-green);
+}
+
+.btn-sm {
+  padding: 0.35rem 0.85rem;
+  font-size: 0.85rem;
+}
+
+.error {
+  color: var(--ah-red);
+  font-weight: 600;
+}
+
+.confirm {
+  color: #2e7d4f;
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--ink-soft);
+}

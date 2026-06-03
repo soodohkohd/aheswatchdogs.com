@@ -1,0 +1,13 @@
+# Build output
+dist/
+node_modules/
+
+# Azure Functions local settings — holds the storage connection string + secrets.
+# NEVER commit. Copy local.settings.sample.json → local.settings.json to set up.
+local.settings.json
+
+# Azure Functions tooling
+bin/
+obj/
+.python_packages/
+*.log

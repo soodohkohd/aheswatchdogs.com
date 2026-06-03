@@ -1,0 +1,40 @@
+<section class="container">
+  <p class="eyebrow">For volunteers</p>
+  <h1>Watch D.O.G.S. Guidelines</h1>
+  <p class="lede">
+    Thank you for volunteering with Watch D.O.G.S.! Your support helps keep our students safe
+    and creates a positive presence on campus. Please review the following expectations.
+  </p>
+
+  <div class="card">
+    <h2>Hours &amp; check-in</h2>
+    <ul>
+      @for (item of hours; track item) {
+        <li>{{ item }}</li>
+      }
+    </ul>
+  </div>
+
+  <div class="card do">
+    <h2>Do’s</h2>
+    <ul>
+      @for (item of dos; track item) {
+        <li>{{ item }}</li>
+      }
+    </ul>
+  </div>
+
+  <div class="card dont">
+    <h2>Don’ts</h2>
+    <ul>
+      @for (item of donts; track item) {
+        <li>{{ item }}</li>
+      }
+    </ul>
+  </div>
+
+  <p class="closing">
+    Your presence makes a difference. Thank you for modeling positivity, respect, and safety for our
+    students. We appreciate your commitment to Antelope Hills Elementary School!
+  </p>
+</section>

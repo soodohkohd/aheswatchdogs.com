@@ -1,0 +1,47 @@
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" routerLink="/">
+      <span class="brand-mark" aria-hidden="true">🐾</span>
+      <span class="brand-text">
+        <strong>Watch D.O.G.S.</strong>
+        <small>Antelope Hills Elementary</small>
+      </span>
+    </a>
+
+    <nav class="site-nav" aria-label="Primary">
+      <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Home</a>
+      <a routerLink="/guidelines" routerLinkActive="active">Guidelines</a>
+      <a routerLink="/schedule" routerLinkActive="active">Schedule</a>
+      <a class="nav-cta" routerLink="/enroll" routerLinkActive="active">Join Watch D.O.G.S.</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <router-outlet />
+</main>
+
+<footer class="site-footer">
+  <div class="container footer-inner">
+    <p>
+      Antelope Hills Elementary School Watch D.O.G.S. &middot; part of the
+      <a href="https://jointotem.com/ca/murrieta/antelope-hills-elementary-pta/join/register" target="_blank" rel="noopener">AHES PTA</a>
+    </p>
+    <p>
+      Questions? <a [href]="'mailto:' + contactEmail">{{ contactEmail }}</a>
+    </p>
+    <p class="muted">
+      &copy; {{ year }} Antelope Hills Elementary Watch D.O.G.S. &middot;
+      <a routerLink="/admin">Coordinator sign-in</a>
+    </p>
+    <p class="legal">
+      WATCH D.O.G.S.<sup>&reg;</sup> and Dads of Great Students<sup>&reg;</sup> are registered
+      trademarks of the National Center for Fathering. PTA<sup>&reg;</sup> is a registered trademark
+      of the National Congress of Parents and Teachers (National PTA). This site is maintained by
+      Antelope Hills Elementary volunteers and is not affiliated with, sponsored by, or endorsed by
+      these organizations.
+    </p>
+  </div>
+</footer>

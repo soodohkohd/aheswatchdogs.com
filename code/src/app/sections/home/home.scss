@@ -1,0 +1,80 @@
+.hero {
+  text-align: center;
+  padding: 1rem 1.25rem 2.5rem;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ah-maroon);
+  margin-bottom: 0.4rem;
+}
+
+.eyebrow sup {
+  font-size: 0.6em;
+}
+
+.hero h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+}
+
+.lede {
+  max-width: 640px;
+  margin: 0.75rem auto 1.5rem;
+  color: var(--ink-soft);
+  font-size: 1.1rem;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.purpose {
+  margin: 1rem auto 2.5rem;
+}
+
+.purpose ol {
+  padding-left: 1.2rem;
+}
+
+.purpose li {
+  margin-bottom: 0.5rem;
+}
+
+.steps h2 {
+  text-align: center;
+}
+
+.step-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.step {
+  text-align: center;
+}
+
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  background: var(--wd-purple);
+  color: #fff;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.center {
+  text-align: center;
+  margin-top: 1.5rem;
+}

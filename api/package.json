@@ -1,0 +1,27 @@
+{
+  "name": "aheswatchdogs-api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Azure Functions API for AHES Watch D.O.G.S. — sign-up + tracking.",
+  "main": "dist/src/functions/*.js",
+  "engines": {
+    "node": "^20.19 || ^22.12"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "clean": "rimraf dist",
+    "prestart": "npm run clean && npm run build",
+    "start": "func start"
+  },
+  "dependencies": {
+    "@azure/data-tables": "^13.3.1",
+    "@azure/functions": "^4.7.0",
+    "google-auth-library": "^10.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.16.0",
+    "rimraf": "^6.0.1",
+    "typescript": "~5.9.2"
+  }
+}

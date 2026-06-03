@@ -1,0 +1,17 @@
+.center {
+  text-align: center;
+  padding: 2rem 1.25rem;
+}
+
+.lede {
+  color: var(--ink-soft);
+  font-size: 1.05rem;
+  margin-bottom: 1.5rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}

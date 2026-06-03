@@ -1,0 +1,69 @@
+:host {
+  display: block;
+}
+
+.mc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.mc-label {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--ah-green-deep);
+}
+
+.mc-nav {
+  font: inherit;
+  font-size: 1.3rem;
+  line-height: 1;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--ah-green);
+}
+
+.mc-nav:hover {
+  background: var(--ah-green-soft);
+}
+
+.mc-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.mc-weekday {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  padding: 0.25rem 0;
+}
+
+.mc-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.mc-day {
+  min-height: 76px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0;
+}
+
+.mc-day.mc-out {
+  background: #fafafa;
+  border-color: #f0f0f0;
+}

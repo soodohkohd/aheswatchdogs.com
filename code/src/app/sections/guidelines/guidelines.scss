@@ -1,0 +1,42 @@
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ah-maroon);
+  margin-bottom: 0.4rem;
+}
+
+.lede {
+  color: var(--ink-soft);
+  font-size: 1.05rem;
+  max-width: 640px;
+  margin-bottom: 1.5rem;
+}
+
+.card {
+  margin-bottom: 1.25rem;
+}
+
+.card ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.card li {
+  margin-bottom: 0.4rem;
+}
+
+.card.do h2 {
+  color: #2e7d4f;
+}
+
+.card.dont h2 {
+  color: var(--ah-maroon);
+}
+
+.closing {
+  font-style: italic;
+  color: var(--ink-soft);
+  margin-top: 1.5rem;
+}

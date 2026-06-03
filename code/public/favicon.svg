@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Watch D.O.G.S. paw print">
+  <rect width="64" height="64" rx="14" fill="#2f7d3a"/>
+  <g fill="#ffffff">
+    <!-- toe beans -->
+    <ellipse cx="18" cy="27" rx="5" ry="6.5" transform="rotate(-18 18 27)"/>
+    <ellipse cx="27.5" cy="20" rx="5.2" ry="6.8"/>
+    <ellipse cx="38.5" cy="20" rx="5.2" ry="6.8"/>
+    <ellipse cx="47" cy="27" rx="5" ry="6.5" transform="rotate(18 47 27)"/>
+    <!-- main pad -->
+    <path d="M32 31c8 0 14 6 14 12.5 0 5-3.8 7.5-8 7.5-2.4 0-4.2-1-6-1s-3.6 1-6 1c-4.2 0-8-2.5-8-7.5C18 37 24 31 32 31z"/>
+  </g>
+</svg>

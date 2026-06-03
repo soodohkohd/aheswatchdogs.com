@@ -1,0 +1,140 @@
+<section class="container">
+  <p class="eyebrow">Coordinators only</p>
+  <h1>Coordinator Admin</h1>
+
+  @if (loading()) {
+    <p class="muted">Loading…</p>
+  } @else if (!auth.isAuthed()) {
+    <!-- Signed out -->
+    <div class="card signin">
+      <h2>Sign in</h2>
+
+      @if (justSignedOut()) {
+        <p class="confirm" role="status">You’ve been signed out. Sign back in below.</p>
+      }
+
+      <p>Access is limited to Watch D.O.G.S. coordinators.</p>
+
+      @if (auth.googleClientId) {
+        <div #googleBtn class="google-btn"></div>
+      } @else {
+        <p class="muted">Sign-in isn’t configured yet.</p>
+      }
+
+      @if (authError()) {
+        <p class="error" role="alert">{{ authError() }}</p>
+      }
+    </div>
+  } @else {
+    <!-- Signed in -->
+    <div class="signed-in-bar">
+      <span>Signed in as <strong>{{ auth.email() }}</strong></span>
+      <div class="bar-actions">
+        <button class="btn btn-ghost btn-sm" type="button" (click)="refresh()">Refresh</button>
+        <button class="btn btn-ghost btn-sm" type="button" (click)="signOut()">Sign out</button>
+      </div>
+    </div>
+
+    @if (authError()) {
+      <p class="error" role="alert">{{ authError() }}</p>
+    }
+
+    <!-- Desktop: calendar + selected-day roster panel -->
+    <div class="admin-grid desktop-only">
+      <div class="card">
+        <h2>Schedule</h2>
+        <app-month-calendar [month]="calMonth()" (monthChange)="onMonthChange($event)">
+          <ng-template #dayCell let-date let-day="day" let-inMonth="inMonth" let-isWeekend="isWeekend">
+            @if (inMonth) {
+              <button
+                type="button"
+                class="cal-cell"
+                [class.weekend]="isWeekend"
+                [class.selected]="selectedDate() === date"
+                (click)="selectDay(date)"
+              >
+                <span class="cal-day">{{ day }}</span>
+                @if (countFor(date) > 0) {
+                  <span class="cal-count">{{ countFor(date) }}</span>
+                }
+              </button>
+            } @else {
+              <div class="cal-cell dim"><span class="cal-day">{{ day }}</span></div>
+            }
+          </ng-template>
+        </app-month-calendar>
+        <p class="cal-legend muted">
+          {{ scheduleLoading() ? 'Loading…' : 'Number = Watch D.O.G.S. signed up. Click a day to see who.' }}
+        </p>
+      </div>
+
+      <div class="card day-panel">
+        @if (!selectedDate()) {
+          <p class="muted">Select a day on the calendar to see who’s signed up.</p>
+        } @else {
+          <h3>{{ formatDate(selectedDate()!) }}</h3>
+          @if (selectedRoster()!.volunteers.length === 0) {
+            <p class="muted">No Watch D.O.G.S. signed up for this day.</p>
+          } @else {
+            <ul class="roster">
+              @for (v of selectedRoster()!.volunteers; track v.id) {
+                <li>
+                  <span class="vol">
+                    <span class="vol-name">{{ v.name }}</span>
+                    <span class="vol-email">{{ v.email }}</span>
+                  </span>
+                  <button
+                    class="btn-link"
+                    type="button"
+                    [disabled]="removing() === selectedDate() + '|' + v.id"
+                    (click)="remove(selectedDate()!, v.id)"
+                  >
+                    {{ removing() === selectedDate() + '|' + v.id ? 'Removing…' : 'Remove' }}
+                  </button>
+                </li>
+              }
+            </ul>
+          }
+        }
+      </div>
+    </div>
+
+    <!-- Mobile: roster list -->
+    <div class="card mobile-only">
+      <h2>Schedule roster</h2>
+      <p class="muted">Who’s signed up over the coming weeks.</p>
+      @if (scheduleLoading()) {
+        <p class="muted">Loading the schedule…</p>
+      } @else if (rosterDays().length === 0) {
+        <p class="muted">No shifts signed up yet.</p>
+      } @else {
+        @for (day of rosterDays(); track day.date) {
+          <div class="roster-day">
+            <div class="day-head">
+              <span class="day-label">{{ formatDate(day.date) }}</span>
+              <span class="day-count">{{ day.count }} signed up</span>
+            </div>
+            <ul class="roster">
+              @for (v of day.volunteers; track v.id) {
+                <li>
+                  <span class="vol">
+                    <span class="vol-name">{{ v.name }}</span>
+                    <span class="vol-email">{{ v.email }}</span>
+                  </span>
+                  <button
+                    class="btn-link"
+                    type="button"
+                    [disabled]="removing() === day.date + '|' + v.id"
+                    (click)="remove(day.date, v.id)"
+                  >
+                    {{ removing() === day.date + '|' + v.id ? 'Removing…' : 'Remove' }}
+                  </button>
+                </li>
+              }
+            </ul>
+          </div>
+        }
+      }
+    </div>
+  }
+</section>

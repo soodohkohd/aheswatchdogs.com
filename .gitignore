@@ -1,3 +1,25 @@
+# System files
+.DS_Store
+Thumbs.db
+
+# Editor / tooling
+.claude/
+.vscode/
+.idea/
+
+# Large source media — hosted in Azure Blob Storage, not committed
+artifacts/*.mp4
+artifacts/*.mov
+
+# Local Azurite (Table Storage emulator) data
+.azurite/
+__azurite_db*__.json
+__blobstorage__/
+__queuestorage__/
+
+# Azure Functions local settings (also ignored in api/.gitignore)
+local.settings.json
+
 # Angular specific
 /dist/
 /out-tsc/

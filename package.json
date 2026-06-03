@@ -1,0 +1,20 @@
+{
+  "name": "aheswatchdogs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AHES Watch D.O.G.S. — local dev orchestration for the Angular frontend (code/) + Azure Functions API (api/).",
+  "engines": {
+    "node": "^20.19 || ^22.12"
+  },
+  "scripts": {
+    "install:all": "npm install && npm --prefix code install && npm --prefix api install",
+    "dev": "concurrently -k -n azurite,api,web -c blue,green,magenta \"npm:dev:azurite\" \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:azurite": "azurite --silent --location .azurite",
+    "dev:api": "npm --prefix api start",
+    "dev:web": "npm --prefix code start",
+    "build": "npm --prefix code run build && npm --prefix api run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
