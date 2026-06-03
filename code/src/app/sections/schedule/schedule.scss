@@ -10,7 +10,6 @@
 .lede {
   color: var(--ink-soft);
   font-size: 1.05rem;
-  max-width: 640px;
   margin-bottom: 1.5rem;
 }
 
@@ -34,6 +33,11 @@
 @media (min-width: 820px) {
   .layout {
     grid-template-columns: 2fr 1fr;
+  }
+  /* Keep the intro within the calendar column's width (2fr of the 2fr/1fr grid,
+   * minus the 1rem gap) so the two lines align with the calendar below. */
+  .lede {
+    max-width: calc((100% - 1rem) * 2 / 3);
   }
   /* Desktop: calendar (left) then side column (right) in source order. */
   .side {
