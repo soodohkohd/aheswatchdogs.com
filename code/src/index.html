@@ -2,6 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <!-- Canonicalize to the apex domain BEFORE anything else loads. www. and the
+       bare domain are separate origins, so CORS (API allows only the apex) and
+       the per-origin login session would otherwise behave inconsistently.
+       Keep this in sync with the API ALLOWED_ORIGIN / OAuth origins. -->
+  <script>
+    (function () {
+      if (location.hostname === 'www.aheswatchdogs.com') {
+        location.replace('https://aheswatchdogs.com' + location.pathname + location.search + location.hash);
+      }
+    })();
+  </script>
   <title>AHES Watch D.O.G.S.</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
