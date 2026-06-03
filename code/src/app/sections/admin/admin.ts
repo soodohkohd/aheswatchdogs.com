@@ -36,6 +36,9 @@ export class Admin implements OnInit {
   protected readonly authError = signal<string | null>(null);
   protected readonly scheduleLoading = signal(false);
   protected readonly removing = signal<string | null>(null);
+  /** Manual "add by name" override (coordinator). */
+  protected readonly manualName = signal('');
+  protected readonly addingManual = signal(false);
   protected readonly gsiReady = signal(false);
   protected readonly justSignedOut = signal(false);
 
@@ -207,6 +210,7 @@ export class Admin implements OnInit {
 
   protected selectDay(date: string): void {
     this.selectedDate.set(date);
+    this.manualName.set('');
   }
 
   protected formatDate(iso: string): string {
@@ -215,6 +219,26 @@ export class Admin implements OnInit {
       month: 'short',
       day: 'numeric',
     }).format(new Date(`${iso}T00:00:00`));
+  }
+
+  /** Coordinator override: add a typed name to the given day (no account). */
+  protected addManual(date: string): void {
+    const name = this.manualName().trim();
+    if (!name || this.addingManual()) return;
+    this.addingManual.set(true);
+    this.authError.set(null);
+    this.adminService.addShift(date, name).subscribe({
+      next: () => {
+        this.addingManual.set(false);
+        this.manualName.set('');
+        const { from, to } = this.monthBounds(new Date(`${date}T00:00:00`));
+        this.loadRange(from, to);
+      },
+      error: (err) => {
+        this.addingManual.set(false);
+        this.authError.set(err?.error?.errors?.[0] ?? 'Could not add that person. Please try again.');
+      },
+    });
   }
 
   protected remove(date: string, volunteerId: string): void {

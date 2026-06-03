@@ -80,8 +80,13 @@
               @for (v of selectedRoster()!.volunteers; track v.id) {
                 <li>
                   <span class="vol">
-                    <span class="vol-name">{{ v.name }}</span>
-                    <span class="vol-email">{{ v.email }}</span>
+                    <span class="vol-name">
+                      {{ v.name }}
+                      @if (v.manual) {
+                        <span class="manual-tag">added by coordinator</span>
+                      }
+                    </span>
+                    <span class="vol-email">{{ v.manual ? 'No account' : v.email }}</span>
                   </span>
                   <button
                     class="btn-link"
@@ -95,6 +100,23 @@
               }
             </ul>
           }
+
+          <form class="manual-add" (submit)="$event.preventDefault(); addManual(selectedDate()!)">
+            <label for="manual-name">Add someone by name <span class="muted">(coordinator override — no account needed)</span></label>
+            <div class="manual-row">
+              <input
+                id="manual-name"
+                type="text"
+                placeholder="Full name"
+                autocomplete="off"
+                [value]="manualName()"
+                (input)="manualName.set($any($event.target).value)"
+              />
+              <button class="btn btn-sm" type="submit" [disabled]="!manualName().trim() || addingManual()">
+                {{ addingManual() ? 'Adding…' : 'Add' }}
+              </button>
+            </div>
+          </form>
         }
       </div>
     </div>
@@ -118,8 +140,13 @@
               @for (v of day.volunteers; track v.id) {
                 <li>
                   <span class="vol">
-                    <span class="vol-name">{{ v.name }}</span>
-                    <span class="vol-email">{{ v.email }}</span>
+                    <span class="vol-name">
+                      {{ v.name }}
+                      @if (v.manual) {
+                        <span class="manual-tag">added by coordinator</span>
+                      }
+                    </span>
+                    <span class="vol-email">{{ v.manual ? 'No account' : v.email }}</span>
                   </span>
                   <button
                     class="btn-link"

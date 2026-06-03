@@ -128,11 +128,17 @@ export interface RosterDay {
  *  email are denormalized for the (admin-facing) roster view. */
 export interface ShiftEntity extends TableEntity {
   partitionKey: string; // date
-  rowKey: string; // volunteer id
+  rowKey: string; // volunteer id, or `manual:<uuid>` for coordinator-added guests
   volunteerName: string;
   email: string;
   createdAt: string;
+  /** True for coordinator-added entries with no volunteer account (name only). */
+  manual?: boolean;
 }
+
+/** Prefix marking a Shifts RowKey as a coordinator-added manual entry (no
+ *  account). Kept distinct from real volunteer ids (UUIDs). */
+export const MANUAL_SHIFT_PREFIX = 'manual:';
 
 /** Public schedule shape — counts only, no PII. */
 export interface ShiftDayCount {

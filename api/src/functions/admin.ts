@@ -1,9 +1,12 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
+import { randomUUID } from 'node:crypto';
 
 import { authenticateAdmin, AuthResult } from '../auth';
 import { getTable } from '../storage/tables';
 import { json, preflight } from '../http';
-import { ShiftEntity, TABLES } from '../models';
+import { MANUAL_SHIFT_PREFIX, ShiftEntity, TABLES } from '../models';
+
+const MAX_NAME_LEN = 120;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -41,7 +44,7 @@ async function me(request: HttpRequest): Promise<HttpResponseInit> {
 interface RosterDay {
   date: string;
   count: number;
-  volunteers: { id: string; name: string; email: string }[];
+  volunteers: { id: string; name: string; email: string; manual: boolean }[];
 }
 
 /** GET /api/admin/schedule?from=&to= — full roster per day (names included;
@@ -62,7 +65,12 @@ async function schedule(request: HttpRequest): Promise<HttpResponseInit> {
   const filter = `PartitionKey ge '${odata(from)}' and PartitionKey le '${odata(to)}'`;
   for await (const s of shifts.listEntities<ShiftEntity>({ queryOptions: { filter } })) {
     const day = byDate.get(s.partitionKey) ?? { date: s.partitionKey, count: 0, volunteers: [] };
-    day.volunteers.push({ id: s.rowKey, name: s.volunteerName, email: s.email });
+    day.volunteers.push({
+      id: s.rowKey,
+      name: s.volunteerName,
+      email: s.email,
+      manual: s.manual === true || s.rowKey.startsWith(MANUAL_SHIFT_PREFIX),
+    });
     day.count = day.volunteers.length;
     byDate.set(s.partitionKey, day);
   }
@@ -70,6 +78,47 @@ async function schedule(request: HttpRequest): Promise<HttpResponseInit> {
   const days = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
   for (const d of days) d.volunteers.sort((a, b) => a.name.localeCompare(b.name));
   return json(200, { days });
+}
+
+/** POST /api/admin/shifts/add { date, name } — coordinator override: add a
+ *  person to a day by name only, with no volunteer account. Stored as a Shifts
+ *  row with a synthetic `manual:<uuid>` id so it counts and shows on rosters and
+ *  can be removed like any other sign-up. Always creates a new row (no
+ *  dedupe) — the same name can be added more than once on purpose. */
+async function addShift(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  if (request.method === 'OPTIONS') return preflight();
+  const auth = await guard(request);
+  if (!auth.ok) return denied(auth);
+
+  let body: { date?: string; name?: string };
+  try {
+    body = (await request.json()) as { date?: string; name?: string };
+  } catch {
+    return json(400, { errors: ['Invalid JSON body.'] });
+  }
+  const date = (body.date || '').trim();
+  const name = (body.name || '').trim();
+  if (!DATE_RE.test(date)) return json(400, { errors: ['A valid date (YYYY-MM-DD) is required.'] });
+  if (!name) return json(400, { errors: ['A name is required.'] });
+  if (name.length > MAX_NAME_LEN) return json(400, { errors: ['That name is too long.'] });
+
+  try {
+    const shifts = await getTable(TABLES.shifts);
+    const id = `${MANUAL_SHIFT_PREFIX}${randomUUID()}`;
+    const entity: ShiftEntity = {
+      partitionKey: date,
+      rowKey: id,
+      volunteerName: name,
+      email: '',
+      manual: true,
+      createdAt: new Date().toISOString(),
+    };
+    await shifts.createEntity(entity);
+    return json(201, { id, name, date });
+  } catch (err) {
+    context.error('admin/shifts/add failed', err);
+    return json(500, { errors: ['Could not add that person. Please try again.'] });
+  }
 }
 
 /** POST /api/admin/shifts/remove { date, volunteerId } — remove a sign-up. */
@@ -117,6 +166,13 @@ app.http('admin-schedule', {
   authLevel: 'anonymous',
   route: 'manage/schedule',
   handler: schedule,
+});
+
+app.http('admin-shift-add', {
+  methods: ['POST', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'manage/shifts/add',
+  handler: addShift,
 });
 
 app.http('admin-shift-remove', {
