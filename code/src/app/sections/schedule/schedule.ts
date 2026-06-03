@@ -1,9 +1,12 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
 import { ShiftsService } from '../../shifts.service';
+import { MyShiftsService } from '../../my-shifts.service';
+import { VolunteerAuthService } from '../../volunteer-auth.service';
 import { MonthCalendar } from '../../shared/month-calendar/month-calendar';
+import { RosterPerson } from '../../models';
 
 interface DayRow {
   date: string;
@@ -11,7 +14,6 @@ interface DayRow {
   count: number;
 }
 
-/** Upcoming weekdays (Mon–Fri) shown in the mobile list. */
 const WEEKDAYS_AHEAD = 15;
 
 @Component({
@@ -23,24 +25,168 @@ const WEEKDAYS_AHEAD = 15;
 export class Schedule implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly shiftsService = inject(ShiftsService);
+  private readonly myShifts = inject(MyShiftsService);
+  protected readonly auth = inject(VolunteerAuthService);
 
-  /** Per-day counts keyed by ISO date, shared by the calendar + mobile list. */
-  private readonly counts = signal<Map<string, number>>(new Map());
   protected readonly calMonth = signal(this.firstOfThisMonth());
   protected readonly loading = signal(true);
-  protected readonly submitting = signal(false);
-  protected readonly confirmation = signal<string | null>(null);
-  protected readonly error = signal<string | null>(null);
 
-  protected readonly form = this.fb.nonNullable.group({
+  /** Logged-out: per-day counts. Logged-in: per-day roster (names). */
+  private readonly counts = signal<Map<string, number>>(new Map());
+  private readonly roster = signal<Map<string, RosterPerson[]>>(new Map());
+  /** The signed-in volunteer's own upcoming dates. */
+  protected readonly myDates = signal<string[]>([]);
+  /** Day whose roster panel is open (logged-in). */
+  protected readonly selectedDate = signal<string | null>(null);
+
+  // ---- Login flow ----
+  protected readonly loginStep = signal<'email' | 'code'>('email');
+  protected readonly requesting = signal(false);
+  protected readonly verifying = signal(false);
+  protected readonly loginError = signal<string | null>(null);
+  protected readonly loginInfo = signal<string | null>(null);
+  protected readonly notRegistered = signal(false);
+
+  protected readonly emailForm = this.fb.nonNullable.group({
     email: ['', [Validators.required, Validators.email]],
-    date: ['', Validators.required],
+  });
+  protected readonly codeForm = this.fb.nonNullable.group({
+    code: ['', [Validators.required, Validators.pattern(/^\d{6}$/)]],
   });
 
-  /** Next N weekdays from today, with counts merged in (mobile list + the
-   *  sign-up <select> options). */
+  // ---- Action feedback (sign up / remove) ----
+  protected readonly actionError = signal<string | null>(null);
+  protected readonly working = signal(false);
+
+  // ---- Delete-account flow ----
+  protected readonly confirmingDelete = signal(false);
+  protected readonly deleting = signal(false);
+  protected readonly deleteError = signal<string | null>(null);
+  /** Shown in the logged-out view after a successful account deletion. */
+  protected readonly accountDeleted = signal(false);
+
+  constructor() {
+    // Reload schedule data whenever auth state flips (sign in / out).
+    let prev = this.auth.loggedIn();
+    effect(() => {
+      const now = this.auth.loggedIn();
+      if (now !== prev) {
+        prev = now;
+        this.selectedDate.set(null);
+        this.counts.set(new Map());
+        this.roster.set(new Map());
+        this.reloadCurrentAndMine();
+      }
+    });
+  }
+
+  ngOnInit(): void {
+    // If we have a stored session, confirm it's still valid before trusting it.
+    if (this.auth.loggedIn()) {
+      this.myShifts.session().subscribe({
+        next: () => this.reloadCurrentAndMine(),
+        error: () => {
+          this.auth.signOut();
+          this.reloadCurrentAndMine();
+        },
+      });
+    } else {
+      this.reloadCurrentAndMine();
+    }
+  }
+
+  // ---------- data loading ----------
+
+  private reloadCurrentAndMine(): void {
+    const today = this.iso(new Date());
+    const monthEnd = this.iso(
+      new Date(this.calMonth().getFullYear(), this.calMonth().getMonth() + 1, 0),
+    );
+    const to = monthEnd > this.addDays(today, 56) ? monthEnd : this.addDays(today, 56);
+    const from = today < this.iso(this.calMonth()) ? today : this.iso(this.calMonth());
+    this.loadRange(from, to, true);
+    if (this.auth.loggedIn()) this.loadMyDates();
+  }
+
+  private loadMyDates(): void {
+    this.myShifts.myDates().subscribe({
+      next: ({ dates }) => this.myDates.set(dates),
+      error: () => {},
+    });
+  }
+
+  private loadRange(from: string, to: string, initial = false): void {
+    if (initial) this.loading.set(true);
+    if (this.auth.loggedIn()) {
+      this.myShifts.roster(from, to).subscribe({
+        next: ({ days }) => {
+          this.roster.update((prev) => {
+            const next = new Map(prev);
+            this.pruneRange(next, from, to);
+            for (const d of days) next.set(d.date, d.people);
+            return next;
+          });
+          this.loading.set(false);
+        },
+        error: () => this.loading.set(false),
+      });
+    } else {
+      this.shiftsService.counts(from, to).subscribe({
+        next: ({ days }) => {
+          this.counts.update((prev) => {
+            const next = new Map(prev);
+            this.pruneRange(next, from, to);
+            for (const d of days) next.set(d.date, d.count);
+            return next;
+          });
+          this.loading.set(false);
+        },
+        error: () => this.loading.set(false),
+      });
+    }
+  }
+
+  private pruneRange<T>(map: Map<string, T>, from: string, to: string): void {
+    for (const key of map.keys()) if (key >= from && key <= to) map.delete(key);
+  }
+
+  protected onMonthChange(month: Date): void {
+    this.calMonth.set(month);
+    const from = this.iso(new Date(month.getFullYear(), month.getMonth(), 1));
+    const to = this.iso(new Date(month.getFullYear(), month.getMonth() + 1, 0));
+    this.loadRange(from, to);
+  }
+
+  /** Pull the latest counts/roster (and my days) — so a volunteer sees others'
+   *  recent sign-ups/removals without reloading the page. */
+  protected refresh(): void {
+    this.reloadCurrentAndMine();
+  }
+
+  // ---------- derived views ----------
+
+  protected countFor(date: string): number {
+    if (this.auth.loggedIn()) return this.roster().get(date)?.length ?? 0;
+    return this.counts().get(date) ?? 0;
+  }
+
+  protected rosterFor(date: string): RosterPerson[] {
+    return this.roster().get(date) ?? [];
+  }
+
+  protected isMine(date: string): boolean {
+    return this.myDates().includes(date);
+  }
+
+  protected isSelected(date: string): boolean {
+    return this.selectedDate() === date;
+  }
+
+  /** Mobile upcoming-days list (logged-out informational + logged-in pickable). */
   protected readonly upcomingDays = computed<DayRow[]>(() => {
-    const map = this.counts();
+    // depend on whichever map is active
+    this.counts();
+    this.roster();
     const labelFmt = new Intl.DateTimeFormat('en-US', {
       weekday: 'short',
       month: 'short',
@@ -53,107 +199,201 @@ export class Schedule implements OnInit {
       const dow = cursor.getDay();
       if (dow !== 0 && dow !== 6) {
         const iso = this.iso(cursor);
-        rows.push({ date: iso, label: labelFmt.format(cursor), count: map.get(iso) ?? 0 });
+        rows.push({ date: iso, label: labelFmt.format(cursor), count: this.countFor(iso) });
       }
       cursor.setDate(cursor.getDate() + 1);
     }
     return rows;
   });
 
-  ngOnInit(): void {
-    // Cover the mobile upcoming window (~3 weeks) and the current calendar month.
-    const today = this.iso(new Date());
-    const monthEnd = this.iso(new Date(this.calMonth().getFullYear(), this.calMonth().getMonth() + 1, 0));
-    const to = monthEnd > this.addDays(today, 56) ? monthEnd : this.addDays(today, 56);
-    this.loadRange(today < this.iso(this.calMonth()) ? today : this.iso(this.calMonth()), to, true);
+  /** My upcoming days with friendly labels, for the "My days" panel. */
+  protected readonly myDayRows = computed<DayRow[]>(() => {
+    const labelFmt = new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+    });
+    return this.myDates()
+      .filter((d) => d >= this.iso(new Date()))
+      .sort((a, b) => a.localeCompare(b))
+      .map((d) => ({ date: d, label: labelFmt.format(new Date(`${d}T00:00:00`)), count: 0 }));
+  });
+
+  protected labelFor(date: string): string {
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+    }).format(new Date(`${date}T00:00:00`));
   }
+
+  // ---------- day selection + actions ----------
+
+  protected pick(date: string): void {
+    if (!this.auth.loggedIn()) return; // logged-out: cells are informational
+    this.actionError.set(null);
+    this.selectedDate.set(this.selectedDate() === date ? null : date);
+  }
+
+  protected signUpDay(date: string): void {
+    if (this.working()) return;
+    this.working.set(true);
+    this.actionError.set(null);
+    this.myShifts.signUp(date).subscribe({
+      next: () => {
+        this.working.set(false);
+        this.afterChange(date);
+      },
+      error: (err) => {
+        this.working.set(false);
+        this.actionError.set(err?.error?.errors?.[0] ?? 'Could not sign up. Please try again.');
+      },
+    });
+  }
+
+  protected removeDay(date: string): void {
+    if (this.working()) return;
+    this.working.set(true);
+    this.actionError.set(null);
+    this.myShifts.remove(date).subscribe({
+      next: () => {
+        this.working.set(false);
+        this.afterChange(date);
+      },
+      error: (err) => {
+        this.working.set(false);
+        this.actionError.set(err?.error?.errors?.[0] ?? 'Could not remove. Please try again.');
+      },
+    });
+  }
+
+  /** Refresh the affected month + my-days after a sign up/remove. */
+  private afterChange(date: string): void {
+    const d = new Date(`${date}T00:00:00`);
+    const from = this.iso(new Date(d.getFullYear(), d.getMonth(), 1));
+    const to = this.iso(new Date(d.getFullYear(), d.getMonth() + 1, 0));
+    this.loadRange(from, to);
+    this.loadMyDates();
+  }
+
+  // ---------- login flow ----------
+
+  protected requestCode(): void {
+    if (this.emailForm.invalid || this.requesting()) {
+      this.emailForm.markAllAsTouched();
+      return;
+    }
+    this.requesting.set(true);
+    this.loginError.set(null);
+    this.loginInfo.set(null);
+    this.notRegistered.set(false);
+    this.accountDeleted.set(false);
+    const email = this.emailForm.controls.email.value.trim().toLowerCase();
+    this.auth.requestCode(email).subscribe({
+      next: () => {
+        this.requesting.set(false);
+        this.loginStep.set('code');
+        this.loginInfo.set(`We emailed a 6-digit code to ${email}. It expires in 10 minutes.`);
+      },
+      error: (err) => {
+        this.requesting.set(false);
+        if (err?.status === 404 && err?.error?.notRegistered) {
+          this.notRegistered.set(true);
+        }
+        this.loginError.set(
+          err?.error?.errors?.[0] ?? 'Could not send your code. Please try again.',
+        );
+      },
+    });
+  }
+
+  protected verifyCode(): void {
+    if (this.codeForm.invalid || this.verifying()) {
+      this.codeForm.markAllAsTouched();
+      return;
+    }
+    this.verifying.set(true);
+    this.loginError.set(null);
+    const email = this.emailForm.controls.email.value.trim().toLowerCase();
+    const code = this.codeForm.controls.code.value.trim();
+    this.auth.verifyCode(email, code).subscribe({
+      next: () => {
+        this.verifying.set(false);
+        this.codeForm.reset({ code: '' });
+        this.loginInfo.set(null);
+        // auth.loggedIn() flips → the effect reloads data.
+      },
+      error: (err) => {
+        this.verifying.set(false);
+        this.loginError.set(err?.error?.errors?.[0] ?? 'That code didn’t work. Try again.');
+      },
+    });
+  }
+
+  protected resetLogin(): void {
+    this.loginStep.set('email');
+    this.codeForm.reset({ code: '' });
+    this.loginError.set(null);
+    this.loginInfo.set(null);
+    this.notRegistered.set(false);
+  }
+
+  protected signOut(): void {
+    this.auth.signOut();
+    this.myDates.set([]);
+    this.selectedDate.set(null);
+    this.confirmingDelete.set(false);
+    this.resetLogin();
+    this.emailForm.reset({ email: '' });
+  }
+
+  // ---- delete account ----
+
+  protected askDelete(): void {
+    this.deleteError.set(null);
+    this.confirmingDelete.set(true);
+  }
+
+  protected cancelDelete(): void {
+    this.confirmingDelete.set(false);
+  }
+
+  protected deleteAccount(): void {
+    if (this.deleting()) return;
+    this.deleting.set(true);
+    this.deleteError.set(null);
+    this.myShifts.deleteAccount().subscribe({
+      next: () => {
+        this.deleting.set(false);
+        this.confirmingDelete.set(false);
+        // Account is gone — drop the session and show a confirmation.
+        this.signOut();
+        this.accountDeleted.set(true);
+      },
+      error: (err) => {
+        this.deleting.set(false);
+        this.deleteError.set(
+          err?.error?.errors?.[0] ?? 'Could not delete your account. Please try again.',
+        );
+      },
+    });
+  }
+
+  // ---------- date helpers ----------
 
   private firstOfThisMonth(): Date {
     const n = new Date();
     return new Date(n.getFullYear(), n.getMonth(), 1);
   }
-
   private iso(d: Date): string {
     const y = d.getFullYear();
     const m = `${d.getMonth() + 1}`.padStart(2, '0');
     const day = `${d.getDate()}`.padStart(2, '0');
     return `${y}-${m}-${day}`;
   }
-
   private addDays(iso: string, days: number): string {
     const d = new Date(`${iso}T00:00:00`);
     d.setDate(d.getDate() + days);
     return this.iso(d);
-  }
-
-  private loadRange(from: string, to: string, initial = false): void {
-    if (initial) this.loading.set(true);
-    this.shiftsService.counts(from, to).subscribe({
-      next: ({ days }) => {
-        this.counts.update((prev) => {
-          const next = new Map(prev);
-          for (const d of days) next.set(d.date, d.count);
-          return next;
-        });
-        this.loading.set(false);
-      },
-      error: () => this.loading.set(false),
-    });
-  }
-
-  protected onMonthChange(month: Date): void {
-    this.calMonth.set(month);
-    const from = this.iso(new Date(month.getFullYear(), month.getMonth(), 1));
-    const to = this.iso(new Date(month.getFullYear(), month.getMonth() + 1, 0));
-    this.loadRange(from, to);
-  }
-
-  protected countFor(date: string): number {
-    return this.counts().get(date) ?? 0;
-  }
-
-  protected isSelected(date: string): boolean {
-    return this.form.controls.date.value === date;
-  }
-
-  protected pick(date: string): void {
-    this.form.controls.date.setValue(date);
-    this.confirmation.set(null);
-    this.error.set(null);
-  }
-
-  protected submit(): void {
-    if (this.form.invalid || this.submitting()) {
-      this.form.markAllAsTouched();
-      this.confirmation.set(null);
-      this.error.set('Please enter your registered email and choose a day.');
-      return;
-    }
-    this.submitting.set(true);
-    this.error.set(null);
-    this.confirmation.set(null);
-
-    const chosen = this.form.controls.date.value;
-    this.shiftsService.signUp(this.form.getRawValue()).subscribe({
-      next: () => {
-        this.submitting.set(false);
-        const label = this.upcomingDays().find((d) => d.date === chosen)?.label ?? chosen;
-        this.confirmation.set(`You’re signed up for ${label}. Thank you! 🐾`);
-        this.form.controls.date.reset('');
-        // Refresh the chosen day's month so its count reflects the new sign-up
-        // (don't move the calendar the user is looking at).
-        const d = new Date(`${chosen}T00:00:00`);
-        const from = this.iso(new Date(d.getFullYear(), d.getMonth(), 1));
-        const to = this.iso(new Date(d.getFullYear(), d.getMonth() + 1, 0));
-        this.loadRange(from, to);
-      },
-      error: (err) => {
-        this.submitting.set(false);
-        this.error.set(
-          err?.error?.errors?.[0] ??
-            'Something went wrong signing up. Please try again, or email support@aheswatchdogs.com.',
-        );
-      },
-    });
   }
 }

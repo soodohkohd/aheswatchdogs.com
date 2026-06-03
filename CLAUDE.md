@@ -22,28 +22,35 @@ Watch D.O.G.S. ("**Dads Of Great Students**") is a national K-12 program; AHES r
 ## Source layout
 
 - **[code/](code/)** — the Angular frontend. All `ng` / `npm` (frontend) commands run from here. Mirrors robbmorgan.com's `code/`. Sections live in `src/app/sections/<name>/`; the public sign-up call goes through [code/src/app/signup.service.ts](code/src/app/signup.service.ts); API base URL + Google client ID come from [code/src/environments/](code/src/environments/) (prod values swapped via `fileReplacements` in [angular.json](code/angular.json)).
-- **[api/](api/)** — the Azure Functions app (TypeScript, v4 model). HTTP functions backing sign-up and tracking; its own `package.json` / `host.json` / `local.settings.json`. Functions: [signup.ts](api/src/functions/signup.ts) (registration) and [shifts.ts](api/src/functions/shifts.ts) (schedule). Table Storage access is centralized in [api/src/storage/tables.ts](api/src/storage/tables.ts); shared CORS/JSON helpers in [api/src/http.ts](api/src/http.ts).
+- **[api/](api/)** — the Azure Functions app (TypeScript, v4 model). HTTP functions; its own `package.json` / `host.json` / `local.settings.json`. Functions: [signup.ts](api/src/functions/signup.ts) (registration), [auth.ts](api/src/functions/auth.ts) (passwordless code sign-in), [my.ts](api/src/functions/my.ts) (volunteer-tier schedule: roster + own shifts), [shifts.ts](api/src/functions/shifts.ts) (public counts), [admin.ts](api/src/functions/admin.ts) (coordinator). Table Storage access is centralized in [api/src/storage/tables.ts](api/src/storage/tables.ts); email sending (Azure Communication Services) in [api/src/email.ts](api/src/email.ts); volunteer session tokens in [api/src/session.ts](api/src/session.ts); code generation + `isActive` in [api/src/verification.ts](api/src/verification.ts); shared CORS/JSON helpers in [api/src/http.ts](api/src/http.ts).
 - **Root** — [package.json](package.json) holds local-dev orchestration only (`npm run dev` runs Azurite + API + web via `concurrently`); see [README.md](README.md). The frontend dev server proxies `/api` to the Functions host ([code/proxy.conf.json](code/proxy.conf.json)), so dev is same-origin and `apiBaseUrl` is just `/api` in [environment.ts](code/src/environments/environment.ts) (full Function App URL in `environment.prod.ts`).
 
 ### API endpoints
 
 | Method | Route | Tier | Purpose |
 | --- | --- | --- | --- |
-| POST | `/api/signup` | public | Create a volunteer (unique email → 409 on dup) + seed enrollment checklist |
-| GET | `/api/shifts?from=&to=` | public | Per-day **counts** for the schedule (no PII) |
-| POST | `/api/shifts` | public (email-gated) | Sign up a registered volunteer for a date |
+| POST | `/api/signup` | public | Create a volunteer as **pending** + seed enrollment checklist. Existing email → 409 `alreadyRegistered` (no email sent — they sign in at the schedule) |
+| POST | `/api/auth/request-code` | public | `{ email }` → email a 6-digit login code to a registered volunteer. Unknown email → 404 `notRegistered` |
+| POST | `/api/auth/verify-code` | public | `{ email, code }` → validate code, mark account **active**, return a **session token**. `410` expired, `429` too many attempts |
+| GET | `/api/shifts?from=&to=` | public | Per-day **counts** only (no names/PII) for the logged-out view |
+| GET | `/api/my/session` | volunteer | Validate the session token, return signed-in email |
+| GET | `/api/my/shifts` | volunteer | The signed-in volunteer's own upcoming dates |
+| POST | `/api/my/shifts` | volunteer | Sign **self** up for a date (idempotent upsert) |
+| POST | `/api/my/shifts/remove` | volunteer | Remove **self** from a date |
+| GET | `/api/my/roster?from=&to=` | volunteer | Per-day roster **names** (no email/PII), `isMe` flags the viewer |
+| POST | `/api/my/account/delete` | volunteer | Delete **self**: all own shifts + enrollment row + volunteer record (cascade, idempotent) |
 | GET | `/api/manage/me` | admin | Validate session, return signed-in email |
-| GET | `/api/manage/schedule?from=&to=` | admin | Per-day **roster** with volunteer names |
-| POST | `/api/manage/shifts/remove` | admin | Remove a volunteer's shift sign-up |
+| GET | `/api/manage/schedule?from=&to=` | admin | Per-day **roster** with volunteer names + emails |
+| POST | `/api/manage/shifts/remove` | admin | Remove any volunteer's shift sign-up |
 
-Admin (`manage/*`) routes require a bearer token and allowlist membership — see "Admin & authentication". Route prefix is `manage` not `admin` (the Functions host reserves `admin`).
+Three tiers: **public** (signup, counts, request/verify code), **volunteer** (`my/*`, gated by a session token from code-login — see "Accounts, sign-in & email"), **admin** (`manage/*`, Google + allowlist — see "Admin & authentication"). Route prefix is `manage` not `admin` (the Functions host reserves `admin`).
 
 **Schedule design decisions** (recorded so they're not silently reversed):
-- The public schedule exposes **counts only**, never volunteer names — names are admin-tier data. The full roster per day is denormalized into the `Shifts` rows (name + email) for the future admin view.
-- Shift sign-up is **gated by a registered email**: the POST looks the email up in `Volunteers`; no match → 404 with a "register first" message. This ties shifts to real volunteers without requiring login yet. The lookup is a small filtered scan — fine at school scale.
-- Sign-up is **idempotent** per (date, volunteer): `Shifts` RowKey is the volunteer id, so re-signing the same day is an upsert, not a duplicate.
+- **Three views of the same `Shifts` data, by tier:** logged-out → **counts only** (`/api/shifts`); signed-in volunteer → **roster names** + their own days, manage only their own (`/api/my/*`, names but **no emails**); admin → full roster with emails + remove anyone (`/api/manage/*`). Name (and email) are denormalized onto each `Shifts` row.
+- **Signing up / removing / seeing names all require a volunteer session.** There is no public POST to `/api/shifts` anymore — you must sign in with an email code first. A valid session ⇒ the account is `active` (code-login is the email-ownership proof), so `my/*` needs no extra status check. Sign-up is **idempotent** per (date, volunteer): `Shifts` RowKey is the volunteer id.
+- Volunteers manage **only their own** shifts — `my/shifts/remove` is keyed by the session's volunteer id, so one volunteer can never remove another. Removing others is admin-only.
 
-**Schedule UI — calendar (desktop) + list (mobile).** Both the public `/schedule` and the admin roster render a month-grid **calendar on desktop** and the original **list on mobile** (CSS `.desktop-only`/`.mobile-only`, breakpoint 820px). The grid is a reusable component, [code/src/app/shared/month-calendar/](code/src/app/shared/month-calendar/): it owns the 6×7 grid, weekday header, and prev/next month nav, and projects a parent-supplied `#dayCell` `<ng-template>` per day (context: `date`, `day`, `inMonth`, `isPast`, `isToday`, `isWeekend`), emitting `monthChange`. Pages keep a `Map<isoDate, …>` of counts/roster and lazily load each month's range on `monthChange` (pruning that range before merging so removals disappear). Public cells show a count badge + click-to-select-day; admin cells show a count + click-to-open that day's roster panel (with Remove).
+**Schedule UI — calendar (desktop) + list (mobile), now a self-service portal.** `/schedule` renders a month-grid **calendar on desktop** and **list on mobile** (CSS `.desktop-only`/`.mobile-only`, breakpoint 820px) via the reusable [code/src/app/shared/month-calendar/](code/src/app/shared/month-calendar/) (owns the 6×7 grid, weekday header, prev/next nav; projects a `#dayCell` `<ng-template>` with context `date`, `day`, `inMonth`, `isPast`, `isToday`, `isWeekend`; emits `monthChange`). The page keeps a `Map<isoDate, …>` and lazily loads each month's range on `monthChange` (pruning the range before merging so removals disappear). **Logged out:** cells show counts only + a "Sign in with your email" card (email → 6-digit code) + Join link. **Logged in:** cells show counts, **your** days are highlighted ("You" tag), clicking a weekday opens a day panel with that day's **roster (names)** and a sign-up/remove-self button; a "My days" panel lists your upcoming days with Remove. Admin roster ([admin](code/src/app/sections/admin/)) is separate and shows full roster + emails.
 - The repo root holds top-level config, a `deploy.sh`, and content sources in [artifacts/](artifacts/).
 - **Asset workflow:** raw content (brochure, logos, photos, original PNG/JPG) lives in [artifacts/](artifacts/). Anything served gets copied to `code/public/`. Large images (>200 KB) are stored as **WebP** in `public/`, not the original PNG/JPG — see "Image formats" below.
 
@@ -117,12 +124,13 @@ Proposed tables (adjust as the build firms up — this is the intended shape, no
 
 | Table | Key | Fields | Source |
 | --- | --- | --- | --- |
-| `Volunteers` | PK `volunteer`, RK = generated id | Name, Email, Mobile, ShirtSize (S/M/L/XL/XXL) — **required**; Students, Availability — **optional** free text; CreatedAt | The registration form (replaces the paper form) |
+| `Volunteers` | PK `volunteer`, RK = generated id | Name, Email, Mobile, ShirtSize (S/M/L/XL/XXL) — **required**; Students, Availability — **optional** free text; CreatedAt; **Status (`pending`\|`active`), VerifiedAt, LoginCode, LoginCodeExpires, LoginCodeAttempts** (passwordless code sign-in) | The registration form (replaces the paper form) |
 | `Enrollment` | PK = volunteer id, RK `status` | FormCompleted, PtaRegistered, TrainingVideosCompleted (the 3-step checklist), plus timestamps | "Enrollment checklist" below |
 | `Shifts` | PK = date (`YYYY-MM-DD`), RK = volunteer id | Date, volunteer id, optional note | Scheduling — which volunteers are on campus which day |
 
 Notes:
-- Email is the natural human identifier but **don't use it as `RowKey`** (it changes, and Table Storage keys are immutable + have character limits) — generate a stable id, store email as a field. Email is **normalized to lowercase** on write and is **unique**: signup rejects a duplicate with `409` (`signup.ts` does a filtered lookup before insert).
+- Email is the natural human identifier but **don't use it as `RowKey`** (it changes, and Table Storage keys are immutable + have character limits) — generate a stable id, store email as a field. Email is **normalized to lowercase** on write and is **unique**: signup looks it up before insert and returns `409 alreadyRegistered` if found.
+- **Status: `pending` → `active`.** New records are `pending`; the first successful **email-code sign-in** sets `active` + stamps `verifiedAt` (the code login is the email-ownership proof — there's no separate verify link). `isActive()` ([api/src/verification.ts](api/src/verification.ts)) treats a missing `status` as NOT active. `LoginCode`/`LoginCodeExpires`/`LoginCodeAttempts` hold the current 6-digit code; cleared on success.
 - Shifts keyed by date as `PartitionKey` makes "who's on campus this day" a single fast partition query — the most common scheduling read.
 - Enrollment mirrors the brochure's 3-step checklist exactly so the site can show each volunteer their remaining steps.
 
@@ -157,6 +165,44 @@ Two endpoint tiers:
 This is allowlist-based, not Workspace-domain — gated on the exact verified email, so personal Google accounts (like `support@aheswatchdogs.com`) work fine.
 
 **Coordinator accounts.** The allowlist is currently just `support@aheswatchdogs.com` (the program's single address, used for everything including admin). This is a **confirmed personal Google account** (no Workspace) — so real "Sign in with Google" works for it as soon as `GOOGLE_CLIENT_ID` is configured; the allowlist gates on the exact email, which is exactly how a personal Google account behaves. Add Garrick Stein / Laura Allen / Robb Morgan to `ADMIN_ALLOWLIST` later if they each want individual logins (each needs its own Google account); otherwise everyone shares the `support@` login.
+
+## Accounts, sign-in & email (BUILT)
+
+Volunteers sign in to the **schedule portal** with a **passwordless 6-digit email code** (no Google — that's admin-only). Proving they can receive the code is the email-ownership check, so it doubles as account activation. This is the **single** ownership mechanism — there is no separate verify-link (an earlier link-based design was consolidated into the code).
+
+**Flow:**
+1. **Signup** ([signup.ts](api/src/functions/signup.ts)) just creates the volunteer as `status: 'pending'` (no email sent). The enroll page tells them to sign in at the schedule when ready.
+2. **Sign in** — on `/schedule`, the volunteer enters their email → **`POST /api/auth/request-code`** ([auth.ts](api/src/functions/auth.ts)) emails a 6-digit code (10-min expiry, stored on the `Volunteers` row). They type it → **`POST /api/auth/verify-code`** validates it, sets `status: 'active'`, clears the code, and returns a **session token**.
+3. **Session** = a **stateless HMAC-signed token** ([session.ts](api/src/session.ts), `SESSION_SECRET`), ~4-hour expiry, held in the browser's **`sessionStorage`** (gone when the tab closes — "session-based only"). The [volunteerAuthInterceptor](code/src/app/volunteer-auth.interceptor.ts) attaches it as `Authorization: Bearer …` to `/api/my/*` calls; [authenticateVolunteer()](api/src/session.ts) gates those routes (→ `401` on missing/expired/bad token).
+4. **Manage** — signed in, the volunteer adds/removes **their own** days and sees each day's **roster names** (read-only for others) via `/api/my/*`. Code generation lives in [verification.ts](api/src/verification.ts) `newLoginCode()`; abuse guards: 6-digit random, 10-min TTL (`LOGIN_CODE_TTL_MS`), max 5 wrong attempts (`MAX_CODE_ATTEMPTS`) → `429`.
+5. **Delete account** — `POST /api/my/account/delete` ([my.ts](api/src/functions/my.ts) `myAccountDelete`) cascades: removes every `Shifts` row for the volunteer, their `Enrollment` row, then the `Volunteers` record. The schedule's "Account" card gates it behind an inline **"Are you sure?"** confirm; on success the SPA signs out and shows an "account deleted" notice. Keyed by the session id, so a volunteer can only ever delete themselves.
+
+**Sending: Azure Communication Services (ACS) Email — NOT the M365 mailbox.** [api/src/email.ts](api/src/email.ts) sends via `@azure/communication-email`. **Why not send "as" the support@ mailbox via Microsoft Graph?** That mailbox is **Microsoft 365 provisioned through GoDaddy**, and GoDaddy-managed M365 **does not give you Entra app-registration access** — so Graph app-only (`Mail.Send`) is impossible, in dev *and* prod. ACS sidesteps the locked tenant entirely: it lives in **our own Azure subscription** (RG `ahes`), proves domain ownership via **DNS** (which we control at GoDaddy), and only sends *outbound*. Inbound mail still flows to the M365 mailbox on its unchanged MX.
+- **Sender:** a send-only address on a verified domain; **Reply-To = `support@aheswatchdogs.com`** (`MAIL_REPLY_TO`) so replies land in the real Outlook inbox.
+- **Two tenants (don't confuse them):** Azure resources live in tenant `7368c58b…` (the `az login` tenant); the support@ mailbox lives in the GoDaddy M365 tenant `215ea289…`. ACS belongs to the **Azure** tenant.
+- **Provisioned (RG `ahes`, all created via CLI):** Email Communication Service **`aheswatchdogs-email`** + an **Azure-managed domain** (instant, no DNS) → sender `DoNotReply@<guid>.azurecomm.net`; Communication Service **`aheswatchdogs-comms`** (linked to the domain) → its **connection string** is `ACS_CONNECTION_STRING`. Cost: pay-per-use only (~$0.25 / 1,000 emails), no standing fee.
+
+**⚠️ Local dev needs no email setup.** If `ACS_CONNECTION_STRING` is absent, `email.ts` **logs the email (including the 6-digit code) to the API console instead of sending** — grab the code from the `npm run dev` output (`[email] ACS not configured…`). For real dev sending, put the ACS connection string in `local.settings.json` (it's already there).
+
+**App settings** (Function App + `local.settings.json`): `ACS_CONNECTION_STRING`, `MAIL_SENDER` (the verified send-only address), `MAIL_REPLY_TO` (= `support@aheswatchdogs.com`), `SESSION_SECRET` (random 32+ chars, signs volunteer session tokens), and the temporary `MAIL_SENDER_APPLE` (see next).
+
+**⚠️ Temporary iCloud workaround (`MAIL_SENDER_APPLE`).** iCloud/Apple is very slow to trust a brand-new sending domain — it **silently drops** mail from `mail.aheswatchdogs.com` (no bounce) until the domain warms up (typically hours–days). So `email.ts` `pickSender()` routes recipients on **`icloud.com` / `me.com` / `mac.com`** through the already-warmed Azure-managed domain (`MAIL_SENDER_APPLE`, the `…azurecomm.net` address that delivers to iCloud reliably); everyone else gets the branded `MAIL_SENDER`. **This is temporary** — once iCloud accepts the branded domain (verify via the delivery logs below), delete `MAIL_SENDER_APPLE` and all mail goes branded. Delivery diagnostics: ACS email logs flow to Log Analytics workspace **`ahes-logs`** (diagnostic setting `acs-email-diag` on `aheswatchdogs-comms`); query `EmailStatusUpdateOperational | project TimeGenerated, RecipientId, DeliveryStatus` to see per-recipient `Delivered`/`FilteredSpam`/`Bounced`/`Suppressed` (first-time ingestion can lag 10–30 min).
+
+**Custom domain — DONE.** A **CustomerManaged** domain `mail.aheswatchdogs.com` is created under `aheswatchdogs-email`, fully **Verified** (Domain ownership + SPF + DKIM + DKIM2), and **linked** to `aheswatchdogs-comms` alongside the Azure-managed domain. A `notifications` sender username exists (display name **"AHES Watch D.O.G.S."**), so mail sends from **`AHES Watch D.O.G.S.` ‹notifications@mail.aheswatchdogs.com›** (Reply-To `support@aheswatchdogs.com`). The send-only address has no inbox/MX by design; replies route to support@ via Reply-To — no M365 alias needed. A subdomain was used deliberately so the records don't touch the root domain's existing Outlook/M365 mail.
+
+DNS records added at GoDaddy (on the `mail` subdomain, so root-domain mail is untouched):
+| Type | Host | Value |
+| --- | --- | --- |
+| TXT | `mail` | `ms-domain-verification=…` (ownership) |
+| TXT | `mail` | `v=spf1 include:spf.protection.outlook.com -all` |
+| CNAME | `selector1-azurecomm-prod-net._domainkey.mail` | `selector1-azurecomm-prod-net._domainkey.azurecomm.net` |
+| CNAME | `selector2-azurecomm-prod-net._domainkey.mail` | `selector2-azurecomm-prod-net._domainkey.azurecomm.net` |
+| TXT | `_dmarc.mail` | `v=DMARC1; p=none; rua=mailto:support@aheswatchdogs.com` |
+
+### Remaining to turn on in prod
+
+1. **Set the Function App settings** (`aheswatchdogs-api`): `ACS_CONNECTION_STRING` (from `az communication list-key -n aheswatchdogs-comms -g ahes`), `MAIL_SENDER=notifications@mail.aheswatchdogs.com`, `MAIL_SENDER_APPLE=DoNotReply@<azure-managed-domain>.azurecomm.net` (temporary iCloud workaround — remove once branded warms up), `MAIL_REPLY_TO=support@aheswatchdogs.com`, `SESSION_SECRET=<random 32+ chars>`.
+2. **Deploy** the new API + frontend (`./deploy.sh`).
 
 ## Image formats
 
@@ -193,7 +239,7 @@ This is the program content the site presents. The brochure is the **source cont
 
 Three steps, all required before serving on campus:
 
-1. **Watch D.O.G.S. Registration Form** — Name, Email, Mobile, Student(s), Availability, T-Shirt Size (S/M/L/XL/XXL). This is the site's primary sign-up flow: the form submits to the Functions API, which writes a `Volunteers` record and seeds an `Enrollment` row (see "Data model"). It replaces the paper form that was submitted to the AHES office.
+1. **Watch D.O.G.S. Registration Form** — Name, Email, Mobile, Student(s), Availability, T-Shirt Size (S/M/L/XL/XXL). This is the site's primary sign-up flow: the form submits to the Functions API, which writes a `Volunteers` record and seeds an `Enrollment` row (see "Data model"). It replaces the paper form that was submitted to the AHES office. To pick days, the volunteer then **signs in at the schedule with an emailed 6-digit code** (see "Accounts, sign-in & email").
 2. **Register with the Antelope Hills Elementary PTA** — the program is part of the PTA, so all volunteers must join. Registration link: `https://jointotem.com/ca/murrieta/antelope-hills-elementary-pta/join/register` (the brochure also has a QR code to this URL).
 3. **Complete the required training videos** (must be done before volunteering). **Self-hosted** in Azure Blob Storage and embedded as `<video>` players in the enroll checklist (see "Large media on blob storage"). The brochure linked YouTube (`youtu.be/Z5lKDTEzTDw`, `youtu.be/-cnRwBwmHD0`) — now superseded by the self-hosted copies:
    - *Foundational Playground Practices* — `…/media/foundational-playground-practices.mp4`
@@ -244,7 +290,7 @@ Videos are **NOT** in `code/public/` — they're hosted in **Azure Blob Storage*
 
 - **Deploy with [deploy.sh](deploy.sh)** (run `nvm use` first): `./deploy.sh` (both), `./deploy.sh web`, or `./deploy.sh api`. Frontend → zip → `az webapp deploy` with `pm2 serve --spa`; API → `func azure functionapp publish aheswatchdogs-api`.
 - **URLs:** SPA at `https://aheswatchdogs.com` (custom domain; the default host is regionalized: `aheswatchdogs-…westus-01.azurewebsites.net`). API at `https://aheswatchdogs-api.azurewebsites.net/api`.
-- **Function App settings** (set via CLI, not committed): `GOOGLE_CLIENT_ID`, `ADMIN_ALLOWLIST=support@aheswatchdogs.com`, `ALLOWED_ORIGIN=https://aheswatchdogs.com`, `TABLES_CONNECTION_STRING` (aheswatchdogsmedia). Always On is enabled.
+- **Function App settings** (set via CLI, not committed): `GOOGLE_CLIENT_ID`, `ADMIN_ALLOWLIST=support@aheswatchdogs.com`, `ALLOWED_ORIGIN=https://aheswatchdogs.com`, `TABLES_CONNECTION_STRING` (aheswatchdogsmedia), and for email + volunteer sign-in `ACS_CONNECTION_STRING` / `MAIL_SENDER` (verified send-only address) / `MAIL_SENDER_APPLE` (iCloud fallback) / `MAIL_REPLY_TO=support@aheswatchdogs.com` / `SESSION_SECRET` (see "Accounts, sign-in & email"). Always On is enabled.
 - **⚠️ CORS gotcha (cost us a debugging session):** the API is a different origin than the SPA, so the admin `/manage/*` calls are cross-origin **with an `Authorization` header**. The API's CORS `Access-Control-Allow-Headers` MUST include `Authorization` ([api/src/http.ts](api/src/http.ts)) — otherwise the browser's preflight silently blocks the authenticated request and the admin UI shows a misleading "not authorized" (it's really a CORS block, not a 403). Public signup/shifts worked throughout because they send no auth header. If admin sign-in fails but public pages work, check this first.
 - **func publish has ~30-60s propagation lag** on the Linux dedicated plan — verify changes (e.g. CORS headers) with a `curl -X OPTIONS` after a short wait, not immediately.
 

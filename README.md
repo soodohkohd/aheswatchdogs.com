@@ -41,11 +41,21 @@ no CORS setup needed. Azurite stores data under `.azurite/` (gitignored); delete
 
 ## Try the full flow
 
-1. **Become a Watch DOG** (`/enroll`) — submit the registration form. Writes a `Volunteers`
-   row and seeds the 3-step `Enrollment` checklist.
-2. **Schedule** (`/schedule`) — enter the email you just registered with, pick a day, and
-   sign up. The day's count goes up. (An unregistered email is rejected with a "register
-   first" message — that's expected.)
+1. **Join Watch D.O.G.S.** (`/enroll`) — submit the registration form. Writes a `Volunteers`
+   row (status `pending`) and seeds the 3-step `Enrollment` checklist. No email is sent here.
+2. **Sign in at the schedule** (`/schedule`) — enter that email → "Email me a code". A 6-digit
+   code is sent via **Azure Communication Services**. If `ACS_CONNECTION_STRING` is set in
+   `api/local.settings.json`, real mail goes out; if it's blank, there's **no real mail** — the API
+   **logs the code to the `npm run dev` console** (look for `[email] ACS not configured…`). Enter
+   the code to sign in (this also marks the account `active`).
+3. **Manage your days** — signed in, click a weekday to see who's on and **sign yourself up** or
+   **remove** yourself; the "My days" panel lists your upcoming days. Logged-out visitors see only
+   per-day **counts** + the sign-in card.
+
+> Sessions are sessionStorage-only (`SESSION_SECRET` signs them). Email sending uses ACS
+> (`ACS_CONNECTION_STRING` / `MAIL_SENDER` / `MAIL_SENDER_APPLE` / `MAIL_REPLY_TO`) — see
+> "Accounts, sign-in & email" in [CLAUDE.md](CLAUDE.md). Sending lives in the Azure tenant, not the
+> GoDaddy-managed M365 tenant.
 
 ### Inspect the data
 

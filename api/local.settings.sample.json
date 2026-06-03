@@ -7,7 +7,13 @@
     "TABLES_CONNECTION_STRING": "UseDevelopmentStorage=true",
     "ALLOWED_ORIGIN": "http://localhost:4200",
     "ADMIN_ALLOWLIST": "support@aheswatchdogs.com",
-    "GOOGLE_CLIENT_ID": "your-oauth-client-id.apps.googleusercontent.com"
+    "GOOGLE_CLIENT_ID": "your-oauth-client-id.apps.googleusercontent.com",
+    "PUBLIC_SITE_URL": "http://localhost:4200",
+    "MAIL_SENDER": "notifications@mail.aheswatchdogs.com",
+    "MAIL_SENDER_APPLE": "DoNotReply@<your-azure-managed-domain>.azurecomm.net",
+    "MAIL_REPLY_TO": "support@aheswatchdogs.com",
+    "SESSION_SECRET": "<random 32+ char secret for signing volunteer sessions>",
+    "ACS_CONNECTION_STRING": ""
   },
   "Host": {
     "CORS": "http://localhost:4200",

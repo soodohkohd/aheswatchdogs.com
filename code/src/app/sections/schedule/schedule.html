@@ -2,9 +2,25 @@
   <p class="eyebrow">On campus</p>
   <h1>Watch D.O.G.S. Schedule</h1>
   <p class="lede">
-    See which days have Watch D.O.G.S. signed up and claim a day of your own. Already registered? Just
-    enter your email and pick a day. Not yet? <a routerLink="/enroll">Join Watch D.O.G.S. first</a>.
+    @if (auth.loggedIn()) {
+      Sign up for days on campus, manage the days you’re on, and see who else is signed up.
+    } @else {
+      See which days have Watch D.O.G.S. on campus. <strong>Sign in with your email</strong> to sign
+      up for days and see who’s on. Not a volunteer yet? <a routerLink="/enroll">Join Watch D.O.G.S.</a>
+    }
   </p>
+
+  @if (auth.loggedIn()) {
+    <div class="signed-in-bar">
+      <span>Signed in as <strong>{{ auth.email() }}</strong></span>
+      <span class="bar-actions">
+        <button type="button" class="btn btn-ghost btn-sm" (click)="refresh()" [disabled]="loading()">
+          {{ loading() ? 'Refreshing…' : 'Refresh' }}
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" (click)="signOut()">Sign out</button>
+      </span>
+    </div>
+  }
 
   <div class="layout">
     <div class="schedule-main">
@@ -15,23 +31,29 @@
             @if (inMonth && !isWeekend && !isPast) {
               <button
                 type="button"
-                class="cal-cell selectable"
+                class="cal-cell"
+                [class.selectable]="auth.loggedIn()"
+                [class.mine]="isMine(date)"
                 [class.selected]="isSelected(date)"
                 (click)="pick(date)"
               >
                 <span class="cal-day">{{ day }}</span>
-                <span class="cal-count" [class.zero]="countFor(date) === 0">
-                  {{ countFor(date) }}
-                </span>
+                <span class="cal-count" [class.zero]="countFor(date) === 0">{{ countFor(date) }}</span>
+                @if (isMine(date)) {
+                  <span class="mine-tag">You</span>
+                }
               </button>
             } @else {
-              <div class="cal-cell dim">
-                <span class="cal-day">{{ day }}</span>
-              </div>
+              <div class="cal-cell dim"><span class="cal-day">{{ day }}</span></div>
             }
           </ng-template>
         </app-month-calendar>
-        <p class="cal-legend muted">Number = Watch D.O.G.S. signed up. Click a weekday to choose it.</p>
+        <p class="cal-legend muted">
+          Number = Watch D.O.G.S. signed up.
+          @if (auth.loggedIn()) {
+            Click a weekday to see who’s on and sign up or remove yourself.
+          }
+        </p>
       </div>
 
       <!-- Mobile: upcoming-days list -->
@@ -42,20 +64,19 @@
         } @else {
           <ul>
             @for (day of upcomingDays(); track day.date) {
-              <li [class.selected]="isSelected(day.date)">
+              <li [class.selected]="isSelected(day.date)" [class.mine]="isMine(day.date)">
                 <div class="day-info">
                   <span class="day-label">{{ day.label }}</span>
                   <span class="day-count">
-                    @if (day.count === 0) {
-                      No volunteers yet
-                    } @else {
-                      {{ day.count }} signed up
-                    }
+                    @if (day.count === 0) { No volunteers yet } @else { {{ day.count }} signed up }
+                    @if (isMine(day.date)) { · You’re on }
                   </span>
                 </div>
-                <button type="button" class="btn btn-ghost btn-sm" (click)="pick(day.date)">
-                  {{ isSelected(day.date) ? 'Selected' : 'Choose' }}
-                </button>
+                @if (auth.loggedIn()) {
+                  <button type="button" class="btn btn-ghost btn-sm" (click)="pick(day.date)">
+                    {{ isSelected(day.date) ? 'Hide' : 'View' }}
+                  </button>
+                }
               </li>
             }
           </ul>
@@ -63,35 +84,150 @@
       </div>
     </div>
 
-    <div class="card signup">
-      <h2>Sign up for a day</h2>
-      <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
-        <div class="field">
-          <label for="email">Your registered email</label>
-          <input id="email" type="email" formControlName="email" autocomplete="email" />
-        </div>
-
-        <div class="field">
-          <label for="date">Day</label>
-          <select id="date" formControlName="date">
-            <option value="" disabled>Choose a day…</option>
-            @for (day of upcomingDays(); track day.date) {
-              <option [value]="day.date">{{ day.label }}</option>
+    <!-- Right column: login (logged out) OR manage (logged in) -->
+    <div class="side">
+      @if (!auth.loggedIn()) {
+        @if (accountDeleted()) {
+          <div class="card deleted-note" role="status">
+            <h2>Account deleted</h2>
+            <p>Your account and all your signed-up days have been removed. Sorry to see you go! 🐾</p>
+            <p class="muted">Changed your mind? You can <a routerLink="/enroll">join again</a> anytime.</p>
+          </div>
+        }
+        <div class="card signin">
+          <h2>Sign in to sign up</h2>
+          @if (loginStep() === 'email') {
+            <p class="muted">Enter your registered email and we’ll send you a 6-digit code.</p>
+            <form [formGroup]="emailForm" (ngSubmit)="requestCode()" novalidate>
+              <div class="field">
+                <label for="login-email">Email</label>
+                <input id="login-email" type="email" formControlName="email" autocomplete="email" />
+              </div>
+              @if (loginError()) {
+                <p class="error" role="alert">{{ loginError() }}</p>
+                @if (notRegistered()) {
+                  <p><a class="btn btn-ghost btn-sm" routerLink="/enroll">Join Watch D.O.G.S.</a></p>
+                }
+              }
+              <button class="btn" type="submit" [disabled]="requesting()">
+                {{ requesting() ? 'Sending…' : 'Email me a code' }}
+              </button>
+            </form>
+          } @else {
+            @if (loginInfo()) {
+              <p class="info" role="status">{{ loginInfo() }}</p>
             }
-          </select>
+            <form [formGroup]="codeForm" (ngSubmit)="verifyCode()" novalidate>
+              <div class="field">
+                <label for="login-code">6-digit code</label>
+                <input
+                  id="login-code"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="6"
+                  formControlName="code"
+                  autocomplete="one-time-code"
+                  placeholder="123456"
+                />
+              </div>
+              @if (loginError()) {
+                <p class="error" role="alert">{{ loginError() }}</p>
+              }
+              <div class="form-actions">
+                <button class="btn" type="submit" [disabled]="verifying()">
+                  {{ verifying() ? 'Verifying…' : 'Sign in' }}
+                </button>
+                <button class="btn btn-ghost btn-sm" type="button" (click)="requestCode()" [disabled]="requesting()">
+                  {{ requesting() ? 'Sending…' : 'Resend code' }}
+                </button>
+                <button class="btn btn-ghost btn-sm" type="button" (click)="resetLogin()">
+                  Use a different email
+                </button>
+              </div>
+            </form>
+          }
+          <p class="join-note muted">Not a volunteer yet? <a routerLink="/enroll">Join Watch D.O.G.S.</a></p>
+        </div>
+      } @else {
+        @if (selectedDate(); as sd) {
+          <div class="card day-panel">
+            <h2>{{ labelFor(sd) }}</h2>
+            @if (rosterFor(sd).length === 0) {
+              <p class="muted">No one’s signed up yet — be the first!</p>
+            } @else {
+              <p class="muted">{{ rosterFor(sd).length }} on campus this day:</p>
+              <ul class="roster">
+                @for (p of rosterFor(sd); track $index) {
+                  <li [class.me]="p.isMe">
+                    {{ p.name }}@if (p.isMe) { <span class="you-tag">you</span> }
+                  </li>
+                }
+              </ul>
+            }
+            @if (actionError()) {
+              <p class="error" role="alert">{{ actionError() }}</p>
+            }
+            @if (isMine(sd)) {
+              <button class="btn btn-ghost" type="button" (click)="removeDay(sd)" [disabled]="working()">
+                {{ working() ? 'Working…' : 'Remove me from this day' }}
+              </button>
+            } @else {
+              <button class="btn" type="button" (click)="signUpDay(sd)" [disabled]="working()">
+                {{ working() ? 'Working…' : 'Sign me up for this day' }}
+              </button>
+            }
+          </div>
+        }
+
+        <div class="card my-days">
+          <h2>My days</h2>
+          @if (myDayRows().length === 0) {
+            <p class="muted">
+              You’re not on any upcoming days yet. Pick a weekday on the calendar (or a day from the
+              list) to sign up.
+            </p>
+          } @else {
+            <ul>
+              @for (d of myDayRows(); track d.date) {
+                <li>
+                  <span class="day-label">{{ d.label }}</span>
+                  <button type="button" class="btn btn-ghost btn-sm" (click)="removeDay(d.date)" [disabled]="working()">
+                    Remove
+                  </button>
+                </li>
+              }
+            </ul>
+          }
         </div>
 
-        @if (error()) {
-          <p class="error" role="alert">{{ error() }}</p>
-        }
-        @if (confirmation()) {
-          <p class="confirm" role="status">{{ confirmation() }}</p>
-        }
-
-        <button class="btn" type="submit" [disabled]="submitting()">
-          {{ submitting() ? 'Signing up…' : 'Sign up for this day' }}
-        </button>
-      </form>
+        <div class="card danger-zone">
+          <h2>Account</h2>
+          @if (!confirmingDelete()) {
+            <p class="muted">
+              Delete your account and remove yourself from every day you’ve signed up for.
+            </p>
+            <button type="button" class="btn btn-danger" (click)="askDelete()">
+              Delete my account
+            </button>
+          } @else {
+            <p class="confirm-q">
+              <strong>Are you sure?</strong> This permanently deletes your account and removes you
+              from all your signed-up days. This can’t be undone.
+            </p>
+            @if (deleteError()) {
+              <p class="error" role="alert">{{ deleteError() }}</p>
+            }
+            <div class="form-actions">
+              <button type="button" class="btn btn-danger" (click)="deleteAccount()" [disabled]="deleting()">
+                {{ deleting() ? 'Deleting…' : 'Yes, delete my account' }}
+              </button>
+              <button type="button" class="btn btn-ghost" (click)="cancelDelete()" [disabled]="deleting()">
+                Cancel
+              </button>
+            </div>
+          }
+        </div>
+      }
     </div>
   </div>
 </section>

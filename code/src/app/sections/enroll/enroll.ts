@@ -1,12 +1,13 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 
 import { SignupService } from '../../signup.service';
 import { ShirtSize, SignupRequest } from '../../models';
 
 @Component({
   selector: 'app-enroll',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, RouterLink],
   templateUrl: './enroll.html',
   styleUrl: './enroll.scss',
 })
@@ -34,6 +35,8 @@ export class Enroll {
   protected readonly submitted = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly triedSubmit = signal(false);
+  /** The email just registered (shown in the success message). */
+  protected readonly submittedEmail = signal('');
 
   protected readonly form = this.fb.nonNullable.group({
     name: ['', Validators.required],
@@ -61,6 +64,7 @@ export class Enroll {
     this.submitting.set(true);
     this.error.set(null);
 
+    this.submittedEmail.set(this.form.controls.email.value);
     this.signupService.submit(this.form.getRawValue() as SignupRequest).subscribe({
       next: () => {
         this.submitting.set(false);

@@ -22,8 +22,8 @@
   align-items: start;
 }
 
-/* Mobile: sign-up form first, then the upcoming-days list. */
-.signup {
+/* Mobile: the side column (sign-in / manage) first, then the calendar/list. */
+.side {
   order: -1;
 }
 
@@ -35,8 +35,8 @@
   .layout {
     grid-template-columns: 2fr 1fr;
   }
-  /* Desktop: calendar (left) then sign-up (right) in source order. */
-  .signup {
+  /* Desktop: calendar (left) then side column (right) in source order. */
+  .side {
     order: 0;
   }
   .desktop-only {
@@ -45,6 +45,30 @@
   .mobile-only {
     display: none;
   }
+}
+
+.side > .card + .card {
+  margin-top: 1rem;
+}
+
+/* ---- Signed-in bar ---- */
+.signed-in-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  background: var(--ah-green-soft);
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+}
+
+.signed-in-bar .bar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 /* ---- Mobile list ---- */
@@ -188,6 +212,19 @@
   font-size: 0.85rem;
 }
 
+/* Stack the (optional) resend + submit buttons full-width, equal size, with a
+ * gap between them. */
+.form-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+}
+
+.form-actions .btn {
+  width: 100%;
+}
+
 .error {
   color: var(--ah-red);
   font-weight: 600;
@@ -198,6 +235,141 @@
   font-weight: 600;
 }
 
+.info {
+  color: var(--ah-green-deep);
+  background: var(--ah-green-soft);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.92rem;
+}
+
 .muted {
   color: var(--ink-soft);
+}
+
+/* ---- "Mine" emphasis (calendar + list) ---- */
+.cal-cell.mine {
+  background: var(--ah-green-soft);
+  box-shadow: inset 0 0 0 1px var(--ah-green);
+}
+
+.cal-cell.mine.selected {
+  outline: 2px solid var(--ah-green);
+}
+
+.mine-tag {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.3rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ah-green-deep);
+}
+
+.cal-cell {
+  position: relative;
+}
+
+.days li.mine {
+  background: var(--ah-green-soft);
+  border-radius: 8px;
+}
+
+/* ---- Day roster panel ---- */
+.day-panel .roster {
+  list-style: none;
+  margin: 0.25rem 0 1rem;
+  padding: 0;
+}
+
+.day-panel .roster li {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.day-panel .roster li:last-child {
+  border-bottom: 0;
+}
+
+.day-panel .roster li.me {
+  font-weight: 600;
+}
+
+.you-tag {
+  display: inline-block;
+  margin-left: 0.4rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--ah-green);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  vertical-align: middle;
+}
+
+.day-panel .btn {
+  width: 100%;
+}
+
+/* ---- My days ---- */
+.my-days ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.my-days li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.my-days li:last-child {
+  border-bottom: 0;
+}
+
+/* ---- Sign-in card ---- */
+.signin .join-note {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+
+.signin .form-actions {
+  align-items: stretch;
+}
+
+/* ---- Delete account ---- */
+.danger-zone h2 {
+  color: var(--ah-red-deep);
+}
+
+.danger-zone .confirm-q {
+  font-size: 0.92rem;
+  margin-bottom: 0.75rem;
+}
+
+.danger-zone .btn {
+  width: 100%;
+}
+
+.btn-danger {
+  background: var(--ah-red);
+  color: #fff;
+  border-color: var(--ah-red);
+}
+
+.btn-danger:hover {
+  background: var(--ah-red-deep);
+  border-color: var(--ah-red-deep);
+}
+
+.deleted-note h2 {
+  color: var(--ah-green-deep);
 }

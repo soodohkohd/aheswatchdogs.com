@@ -39,9 +39,14 @@
       <div class="success" role="status">
         <h3>Thanks for signing up! 🐾</h3>
         <p>
-          Your registration has been received. Next, complete steps 2 and 3 above if you haven’t
-          yet — register with the PTA and watch both training videos. We’ll be in touch about your
-          Watch D.O.G.S. shirt and getting on the schedule.
+          You’re registered as <strong>{{ submittedEmail() }}</strong>. When you’re ready to pick
+          days on campus, head to the <a routerLink="/schedule">Schedule</a> and
+          <strong>sign in with your email</strong> — we’ll send you a 6-digit code to confirm it’s
+          you. No password to remember.
+        </p>
+        <p>
+          Next, complete steps 2 and 3 above if you haven’t yet — register with the PTA and watch
+          both training videos.
         </p>
       </div>
     } @else {

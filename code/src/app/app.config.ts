@@ -12,6 +12,7 @@ import { filter } from 'rxjs/operators';
 import { routes } from './app.routes';
 import { environment } from '../environments/environment';
 import { adminAuthInterceptor } from './admin-auth.interceptor';
+import { volunteerAuthInterceptor } from './volunteer-auth.interceptor';
 
 const DEFAULT_DESCRIPTION =
   'Antelope Hills Elementary School Watch D.O.G.S. — program info, volunteer sign-up, and guidelines for serving on campus.';
@@ -19,7 +20,7 @@ const DEFAULT_DESCRIPTION =
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    provideHttpClient(withFetch(), withInterceptors([adminAuthInterceptor])),
+    provideHttpClient(withFetch(), withInterceptors([adminAuthInterceptor, volunteerAuthInterceptor])),
     provideRouter(
       routes,
       // Scroll to top on forward navigation; restore prior position on

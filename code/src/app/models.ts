@@ -13,7 +13,26 @@ export interface SignupRequest {
 }
 
 export interface SignupResponse {
-  id: string;
+  id?: string;
+  /** Set when the email is already registered (→ send them to sign in). */
+  alreadyRegistered?: boolean;
+}
+
+/** Passwordless login: request a code, then exchange it for a session. */
+export interface VerifyCodeResponse {
+  token: string;
+  email: string;
+  name: string;
+}
+
+/** A person on a day's roster as shown to a signed-in volunteer (names only). */
+export interface RosterPerson {
+  name: string;
+  isMe: boolean;
+}
+export interface RosterDay {
+  date: string; // YYYY-MM-DD
+  people: RosterPerson[];
 }
 
 /** The 3-step enrollment checklist tracked per volunteer (admin-facing). */
@@ -27,10 +46,4 @@ export interface EnrollmentStatus {
 export interface ShiftDayCount {
   date: string; // YYYY-MM-DD
   count: number;
-}
-
-/** Payload to sign up for a shift — pick a day, identify by registered email. */
-export interface ShiftSignupRequest {
-  date: string;
-  email: string;
 }

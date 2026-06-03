@@ -3,9 +3,10 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../environments/environment';
-import { ShiftDayCount, ShiftSignupRequest } from './models';
+import { ShiftDayCount } from './models';
 
-/** Public schedule calls: read per-day counts and sign up for a day. */
+/** Public schedule call: per-day counts only (no names). Signing up, removing,
+ *  and seeing names all require a volunteer session — see MyShiftsService. */
 @Injectable({ providedIn: 'root' })
 export class ShiftsService {
   private readonly http = inject(HttpClient);
@@ -13,9 +14,5 @@ export class ShiftsService {
 
   counts(from: string, to: string): Observable<{ days: ShiftDayCount[] }> {
     return this.http.get<{ days: ShiftDayCount[] }>(this.base, { params: { from, to } });
-  }
-
-  signUp(payload: ShiftSignupRequest): Observable<{ date: string }> {
-    return this.http.post<{ date: string }>(this.base, payload);
   }
 }

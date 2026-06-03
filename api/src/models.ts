@@ -5,6 +5,19 @@ import { TableEntity } from '@azure/data-tables';
 export type ShirtSize = 'S' | 'M' | 'L' | 'XL' | 'XXL';
 export const SHIRT_SIZES: ShirtSize[] = ['S', 'M', 'L', 'XL', 'XXL'];
 
+/** Account state for a volunteer. A record is created `pending` at sign-up and
+ *  flips to `active` the first time the volunteer proves email ownership by
+ *  logging in with an emailed 6-digit code. Legacy records with no `status`
+ *  are treated as NOT active (see `isActive`). */
+export type VolunteerStatus = 'pending' | 'active';
+
+/** Login code: 6 digits, valid 10 minutes, max 5 wrong attempts. */
+export const LOGIN_CODE_TTL_MS = 10 * 60 * 1000;
+export const MAX_CODE_ATTEMPTS = 5;
+
+/** Volunteer session token lifetime (session-based; ~4 hours). */
+export const SESSION_TTL_MS = 4 * 60 * 60 * 1000;
+
 /** Payload for the public sign-up POST. */
 export interface SignupRequest {
   name: string;
@@ -27,6 +40,17 @@ export interface VolunteerEntity extends TableEntity {
   availability: string;
   shirtSize: ShirtSize;
   createdAt: string;
+  /** Account state. Absent on legacy records → treat as NOT active. */
+  status?: VolunteerStatus;
+  /** ISO timestamp the volunteer first proved email ownership (code login). */
+  verifiedAt?: string;
+  /** Current single-use 6-digit login code (hashed is overkill at this scale;
+   *  stored plain, short-lived). Cleared on successful login. */
+  loginCode?: string;
+  /** ISO timestamp after which the login code is no longer valid. */
+  loginCodeExpires?: string;
+  /** Wrong-attempt counter for the current code; resets on each new request. */
+  loginCodeAttempts?: number;
 }
 
 /** `Enrollment` table — PartitionKey = volunteer id, RowKey 'status'.
@@ -40,10 +64,31 @@ export interface EnrollmentEntity extends TableEntity {
   updatedAt: string;
 }
 
-/** Payload for a shift sign-up — pick a date, identify by registered email. */
-export interface ShiftSignupRequest {
-  date: string; // YYYY-MM-DD
+/** Passwordless login: request a 6-digit code, then exchange it for a session. */
+export interface RequestCodeRequest {
   email: string;
+}
+export interface VerifyCodeRequest {
+  email: string;
+  code: string;
+}
+
+/** Volunteer-tier payload to add/remove one's own shift for a date. */
+export interface MyShiftRequest {
+  date: string; // YYYY-MM-DD
+}
+
+/** One person on a day's roster, as shown to a signed-in volunteer (names
+ *  only — no email/PII). `isMe` marks the viewer's own row. */
+export interface RosterPerson {
+  name: string;
+  isMe: boolean;
+}
+
+/** A day's roster for the signed-in volunteer view. */
+export interface RosterDay {
+  date: string;
+  people: RosterPerson[];
 }
 
 /** `Shifts` table — PartitionKey = date (YYYY-MM-DD), RowKey = volunteer id.
