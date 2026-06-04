@@ -7,12 +7,14 @@ import { getTable } from '../storage/tables';
 import { json, preflight } from '../http';
 import { sendWelcomeEmail } from '../email';
 import {
+  AccountCreateRequest,
   AccountSummary,
   AccountUpdateRequest,
   EnrollmentEntity,
   MANUAL_SHIFT_PREFIX,
   SHIRT_SIZES,
   ShiftEntity,
+  ShirtSize,
   TABLES,
   TRAINING_VIDEOS,
   TRAINING_VIDEO_SLUGS,
@@ -95,30 +97,53 @@ async function schedule(request: HttpRequest): Promise<HttpResponseInit> {
   return json(200, { days });
 }
 
-/** POST /api/admin/shifts/add { date, name } — coordinator override: add a
- *  person to a day by name only, with no volunteer account. Stored as a Shifts
- *  row with a synthetic `manual:<uuid>` id so it counts and shows on rosters and
- *  can be removed like any other sign-up. Always creates a new row (no
- *  dedupe) — the same name can be added more than once on purpose. */
+/** POST /api/admin/shifts/add { date, name | volunteerId } — coordinator adds
+ *  someone to a day. Two modes:
+ *   - `volunteerId` → add an EXISTING (active) account-holder; idempotent per
+ *     (date, volunteer), denormalizing their name/email like a normal sign-up.
+ *   - `name` → a name-only manual entry with no account (synthetic `manual:` id;
+ *     a new row each time on purpose). */
 async function addShift(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
   if (request.method === 'OPTIONS') return preflight();
   const auth = await guard(request);
   if (!auth.ok) return denied(auth);
 
-  let body: { date?: string; name?: string };
+  let body: { date?: string; name?: string; volunteerId?: string };
   try {
-    body = (await request.json()) as { date?: string; name?: string };
+    body = (await request.json()) as { date?: string; name?: string; volunteerId?: string };
   } catch {
     return json(400, { errors: ['Invalid JSON body.'] });
   }
   const date = (body.date || '').trim();
-  const name = (body.name || '').trim();
   if (!DATE_RE.test(date)) return json(400, { errors: ['A valid date (YYYY-MM-DD) is required.'] });
-  if (!name) return json(400, { errors: ['A name is required.'] });
-  if (name.length > MAX_NAME_LEN) return json(400, { errors: ['That name is too long.'] });
+
+  const volunteerId = (body.volunteerId || '').trim();
+  const name = (body.name || '').trim();
 
   try {
     const shifts = await getTable(TABLES.shifts);
+
+    // Mode 1: existing account-holder (must be active).
+    if (volunteerId) {
+      const volunteer = await getVolunteer(volunteerId);
+      if (!volunteer) return json(404, { errors: ['That volunteer no longer exists.'] });
+      if (volunteer.status !== 'active') {
+        return json(400, { errors: ['Only active volunteers can be added to a day.'] });
+      }
+      const entity: ShiftEntity = {
+        partitionKey: date,
+        rowKey: volunteerId,
+        volunteerName: volunteer.name,
+        email: volunteer.email,
+        createdAt: new Date().toISOString(),
+      };
+      await shifts.upsertEntity(entity, 'Replace'); // idempotent per (date, volunteer)
+      return json(201, { id: volunteerId, name: volunteer.name, date });
+    }
+
+    // Mode 2: name-only manual entry (no account).
+    if (!name) return json(400, { errors: ['A name or volunteer is required.'] });
+    if (name.length > MAX_NAME_LEN) return json(400, { errors: ['That name is too long.'] });
     const id = `${MANUAL_SHIFT_PREFIX}${randomUUID()}`;
     const entity: ShiftEntity = {
       partitionKey: date,
@@ -430,6 +455,90 @@ async function updateAccount(request: HttpRequest, context: InvocationContext): 
   }
 }
 
+/** POST /api/manage/accounts/create — coordinator creates a new account. It's
+ *  active immediately (the coordinator is vouching) and the volunteer gets the
+ *  welcome email so they can sign in. Seeds the enrollment checklist row. */
+async function createAccount(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  if (request.method === 'OPTIONS') return preflight();
+  const auth = await guard(request);
+  if (!auth.ok) return denied(auth);
+
+  let body: AccountCreateRequest;
+  try {
+    body = (await request.json()) as AccountCreateRequest;
+  } catch {
+    return json(400, { errors: ['Invalid JSON body.'] });
+  }
+
+  const errors: string[] = [];
+  const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  const name = str(body.name);
+  const email = str(body.email).toLowerCase();
+  const mobile = str(body.mobile);
+  const students = str(body.students);
+  const availability = str(body.availability);
+  const shirtSize = body.shirtSize;
+  if (!name) errors.push('Name is required.');
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.push('A valid email is required.');
+  if (!mobile) errors.push('Mobile is required.');
+  if (!SHIRT_SIZES.includes(shirtSize)) errors.push('A valid t-shirt size is required.');
+  if (errors.length) return json(400, { errors });
+
+  try {
+    const volunteers = await getTable(TABLES.volunteers);
+    for await (const _existing of volunteers.listEntities<VolunteerEntity>({
+      queryOptions: { filter: `email eq '${odata(email)}'`, select: ['rowKey'] },
+    })) {
+      return json(409, { alreadyRegistered: true, errors: ['An account with that email already exists.'] });
+    }
+
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    const volunteer: VolunteerEntity = {
+      partitionKey: 'volunteer',
+      rowKey: id,
+      name,
+      email,
+      mobile,
+      students,
+      availability,
+      shirtSize: shirtSize as ShirtSize,
+      createdAt: now,
+      status: 'active',
+      reviewedAt: now,
+    };
+    await volunteers.createEntity(volunteer);
+
+    const enrollment = await getTable(TABLES.enrollment);
+    await enrollment.createEntity({
+      partitionKey: id,
+      rowKey: 'status',
+      formCompleted: true,
+      ptaRegistered: false,
+      trainingVideosCompleted: false,
+      updatedAt: now,
+    } as EnrollmentEntity);
+
+    let emailSent = false;
+    try {
+      emailSent = await sendWelcomeEmail(email, name, context);
+      if (emailSent) {
+        await volunteers.updateEntity(
+          { partitionKey: 'volunteer', rowKey: id, welcomeSentAt: now } as VolunteerEntity,
+          'Merge',
+        );
+      }
+    } catch (mailErr) {
+      context.error('admin/accounts create: welcome email failed', mailErr);
+      return json(201, { id, emailSent: false, emailError: true });
+    }
+    return json(201, { id, emailSent });
+  } catch (err) {
+    context.error('admin/accounts create failed', err);
+    return json(500, { errors: ['Could not create the account. Please try again.'] });
+  }
+}
+
 /** POST /api/manage/accounts/delete { id } — cascade delete a volunteer: their
  *  shifts, enrollment row, and the volunteer record. Idempotent. */
 async function deleteAccount(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
@@ -532,6 +641,13 @@ app.http('admin-accounts-deny', {
   authLevel: 'anonymous',
   route: 'manage/accounts/deny',
   handler: (req, ctx) => reviewAccount(req, ctx, 'deny'),
+});
+
+app.http('admin-accounts-create', {
+  methods: ['POST', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'manage/accounts/create',
+  handler: createAccount,
 });
 
 app.http('admin-accounts-update', {

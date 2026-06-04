@@ -6,6 +6,15 @@ import { MonthCalendar } from '../../shared/month-calendar/month-calendar';
 
 type AdminTab = 'schedule' | 'accounts';
 
+interface CreateDraft {
+  name: string;
+  email: string;
+  mobile: string;
+  shirtSize: string;
+  students: string;
+  availability: string;
+}
+
 // Google Identity Services global (loaded from gsi/client when a client ID is set).
 declare global {
   interface Window {
@@ -46,6 +55,9 @@ export class Admin implements OnInit {
   /** Manual "add by name" override (coordinator). */
   protected readonly manualName = signal('');
   protected readonly addingManual = signal(false);
+  /** "Add existing account-holder to a day" picker (schedule day panel). */
+  protected readonly pickedVolunteerId = signal('');
+  protected readonly addingExisting = signal(false);
   protected readonly gsiReady = signal(false);
   protected readonly justSignedOut = signal(false);
 
@@ -70,6 +82,28 @@ export class Admin implements OnInit {
   protected readonly pendingCount = computed(
     () => this.accounts().filter((a) => a.status === 'pending').length,
   );
+
+  /** Active accounts, sorted by first name (then full name) — the picker for
+   *  adding existing volunteers to a day. */
+  protected readonly activeAccounts = computed(() => {
+    const firstName = (n: string) => n.trim().split(/\s+/)[0] || n;
+    return this.accounts()
+      .filter((a) => a.status === 'active')
+      .sort((x, y) => firstName(x.name).localeCompare(firstName(y.name)) || x.name.localeCompare(y.name));
+  });
+
+  // ---- Create account (coordinator) ----
+  protected readonly showCreate = signal(false);
+  protected readonly creating = signal(false);
+  protected readonly createError = signal<string | null>(null);
+  protected readonly createDraft = signal<CreateDraft>({
+    name: '',
+    email: '',
+    mobile: '',
+    shirtSize: 'M',
+    students: '',
+    availability: '',
+  });
 
   // ---- search / filter / pagination ----
   protected readonly searchTerm = signal('');
@@ -222,6 +256,8 @@ export class Admin implements OnInit {
     this.searchTerm.set('');
     this.statusFilter.set('all');
     this.page.set(1);
+    this.showCreate.set(false);
+    this.pickedVolunteerId.set('');
   }
 
   // --- date helpers ---
@@ -296,6 +332,7 @@ export class Admin implements OnInit {
   protected selectDay(date: string): void {
     this.selectedDate.set(date);
     this.manualName.set('');
+    this.pickedVolunteerId.set('');
   }
 
   protected formatDate(iso: string): string {
@@ -324,6 +361,83 @@ export class Admin implements OnInit {
         this.authError.set(err?.error?.errors?.[0] ?? 'Could not add that person. Please try again.');
       },
     });
+  }
+
+  /** Add an existing active account-holder to the given day. */
+  protected addExisting(date: string): void {
+    const id = this.pickedVolunteerId();
+    if (!id || this.addingExisting()) return;
+    this.addingExisting.set(true);
+    this.authError.set(null);
+    this.adminService.addAccountShift(date, id).subscribe({
+      next: () => {
+        this.addingExisting.set(false);
+        this.pickedVolunteerId.set('');
+        const { from, to } = this.monthBounds(new Date(`${date}T00:00:00`));
+        this.loadRange(from, to);
+      },
+      error: (err) => {
+        this.addingExisting.set(false);
+        this.authError.set(err?.error?.errors?.[0] ?? 'Could not add that volunteer. Please try again.');
+      },
+    });
+  }
+
+  // ---- create account (coordinator) ----
+
+  protected openCreate(): void {
+    // Creating and editing are mutually exclusive — close any in-progress edit.
+    this.cancelEdit();
+    this.confirmDeleteId.set(null);
+    this.createError.set(null);
+    this.createDraft.set({ name: '', email: '', mobile: '', shirtSize: 'M', students: '', availability: '' });
+    this.showCreate.set(true);
+  }
+
+  protected cancelCreate(): void {
+    this.showCreate.set(false);
+    this.createError.set(null);
+  }
+
+  protected patchCreate(field: keyof CreateDraft, value: string): void {
+    this.createDraft.update((d) => ({ ...d, [field]: value }));
+  }
+
+  protected submitCreate(): void {
+    const d = this.createDraft();
+    if (this.creating()) return;
+    if (!d.name.trim() || !d.email.trim() || !d.mobile.trim()) {
+      this.createError.set('Name, email, and mobile are required.');
+      return;
+    }
+    this.creating.set(true);
+    this.createError.set(null);
+    this.accountNotice.set(null);
+    this.adminService
+      .createAccount({
+        name: d.name.trim(),
+        email: d.email.trim(),
+        mobile: d.mobile.trim(),
+        shirtSize: d.shirtSize,
+        students: d.students.trim(),
+        availability: d.availability.trim(),
+      })
+      .subscribe({
+        next: (res) => {
+          this.creating.set(false);
+          this.showCreate.set(false);
+          this.accountNotice.set(
+            res.emailError
+              ? `${d.name.trim()} created (active), but the welcome email failed to send.`
+              : `${d.name.trim()} created and activated — welcome email sent.`,
+          );
+          this.loadAccounts();
+        },
+        error: (err) => {
+          this.creating.set(false);
+          this.createError.set(err?.error?.errors?.[0] ?? 'Could not create the account. Please try again.');
+        },
+      });
   }
 
   protected remove(date: string, volunteerId: string): void {
@@ -439,6 +553,7 @@ export class Admin implements OnInit {
 
   protected startEdit(a: Account): void {
     if (a.status === 'pending') return; // must be approved/denied first
+    this.showCreate.set(false); // don't edit while creating a new account
     this.confirmDeleteId.set(null);
     this.editingId.set(a.id);
     this.editDraft.set({

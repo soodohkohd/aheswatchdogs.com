@@ -545,6 +545,7 @@
 .edit-actions {
   display: flex;
   gap: 0.6rem;
+  margin-top: 1.1rem;
 }
 
 @media (max-width: 640px) {
@@ -607,4 +608,52 @@
 .pager-pos {
   color: var(--ink-soft);
   font-weight: 600;
+}
+
+/* ---- New account button group + create form ---- */
+.accounts-head-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.create-account {
+  margin-bottom: 1rem;
+}
+
+.create-account h3 {
+  margin: 0 0 0.25rem;
+  color: var(--ah-green-deep);
+}
+
+.create-account .edit-grid {
+  margin-top: 0.75rem;
+}
+
+/* ---- Add existing volunteer to a day (schedule day panel) ---- */
+.add-existing {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+}
+
+.add-existing label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.4rem;
+}
+
+.add-existing select {
+  flex: 1;
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.add-existing select:focus {
+  outline: 2px solid var(--ah-green);
+  outline-offset: 1px;
+  border-color: var(--ah-green);
 }

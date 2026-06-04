@@ -62,3 +62,20 @@ export interface ShiftDayCount {
   date: string; // YYYY-MM-DD
   count: number;
 }
+
+/** A volunteer's own editable profile (contact fields; email is read-only). */
+export interface MyAccount {
+  name: string;
+  email: string;
+  mobile: string;
+  students: string;
+  availability: string;
+  shirtSize: ShirtSize;
+}
+export interface MyAccountUpdate {
+  name: string;
+  mobile: string;
+  students: string;
+  availability: string;
+  shirtSize: ShirtSize;
+}

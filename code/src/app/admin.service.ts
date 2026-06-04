@@ -78,10 +78,30 @@ export class AdminService {
     return this.http.post<{ id: string; name: string; date: string }>(`${this.base}/shifts/add`, { date, name });
   }
 
+  /** Add an existing (active) account-holder to a day. */
+  addAccountShift(date: string, volunteerId: string): Observable<{ id: string; name: string; date: string }> {
+    return this.http.post<{ id: string; name: string; date: string }>(`${this.base}/shifts/add`, { date, volunteerId });
+  }
+
   // ---- Accounts ----
 
   accounts(): Observable<{ accounts: Account[] }> {
     return this.http.get<{ accounts: Account[] }>(`${this.base}/accounts`);
+  }
+
+  /** Coordinator creates a new (active) account. */
+  createAccount(payload: {
+    name: string;
+    email: string;
+    mobile: string;
+    shirtSize: string;
+    students: string;
+    availability: string;
+  }): Observable<{ id: string; emailSent: boolean; emailError?: boolean }> {
+    return this.http.post<{ id: string; emailSent: boolean; emailError?: boolean }>(
+      `${this.base}/accounts/create`,
+      payload,
+    );
   }
 
   approveAccount(id: string): Observable<{ ok: boolean; emailSent: boolean; emailError?: boolean }> {

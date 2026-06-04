@@ -155,6 +155,33 @@ export interface MyShiftRequest {
   date: string; // YYYY-MM-DD
 }
 
+/** Volunteer self-service profile (contact fields only; email is fixed). */
+export interface MyAccount {
+  name: string;
+  email: string;
+  mobile: string;
+  students: string;
+  availability: string;
+  shirtSize: ShirtSize;
+}
+export interface MyAccountUpdateRequest {
+  name?: string;
+  mobile?: string;
+  students?: string;
+  availability?: string;
+  shirtSize?: ShirtSize;
+}
+
+/** Admin: coordinator creates a new account (becomes active immediately). */
+export interface AccountCreateRequest {
+  name: string;
+  email: string;
+  mobile: string;
+  shirtSize: ShirtSize;
+  students?: string;
+  availability?: string;
+}
+
 /** One person on a day's roster, as shown to a signed-in volunteer (names
  *  only — no email/PII). `isMe` marks the viewer's own row. */
 export interface RosterPerson {

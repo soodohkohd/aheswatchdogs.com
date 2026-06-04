@@ -7,8 +7,10 @@ import { authenticateVolunteer } from '../session';
 import {
   EnrollmentEntity,
   EnrollmentState,
+  MyAccountUpdateRequest,
   MyShiftRequest,
   RosterDay,
+  SHIRT_SIZES,
   ShiftEntity,
   TABLES,
   TRAINING_VIDEOS,
@@ -16,6 +18,8 @@ import {
   VolunteerEntity,
   WatchVideoRequest,
 } from '../models';
+
+const MAX_LEN = 2000;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -304,7 +308,95 @@ export async function myWatchVideo(request: HttpRequest, context: InvocationCont
   }
 }
 
+// ---------- self-service account profile ----------
+
+/** GET /api/my/account → the signed-in volunteer's editable profile.
+ *  POST /api/my/account → update own contact fields (email is NOT editable). */
+export async function myAccount(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  if (request.method === 'OPTIONS') return preflight();
+  const auth = authenticateVolunteer(request);
+  if (!auth.ok) return json(auth.status, { errors: [auth.error] });
+
+  const volunteers = await getTable(TABLES.volunteers);
+  let me: VolunteerEntity;
+  try {
+    me = await volunteers.getEntity<VolunteerEntity>('volunteer', auth.volunteerId);
+  } catch (err) {
+    if (err instanceof RestError && err.statusCode === 404) {
+      return json(404, { errors: ['Your account no longer exists.'] });
+    }
+    context.error('my: account read failed', err);
+    return json(500, { errors: ['Could not load your account. Please try again later.'] });
+  }
+
+  if (request.method === 'GET') {
+    return json(200, {
+      name: me.name,
+      email: me.email,
+      mobile: me.mobile,
+      students: me.students,
+      availability: me.availability,
+      shirtSize: me.shirtSize,
+    });
+  }
+
+  // POST → update contact fields only.
+  let body: MyAccountUpdateRequest;
+  try {
+    body = (await request.json()) as MyAccountUpdateRequest;
+  } catch {
+    return json(400, { errors: ['Invalid JSON body.'] });
+  }
+
+  const errors: string[] = [];
+  const patch: Partial<VolunteerEntity> = { partitionKey: 'volunteer', rowKey: auth.volunteerId };
+  const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+
+  if (body.name !== undefined) {
+    const name = str(body.name);
+    if (!name) errors.push('Name cannot be empty.');
+    else patch.name = name;
+  }
+  if (body.mobile !== undefined) {
+    const mobile = str(body.mobile);
+    if (!mobile) errors.push('Mobile cannot be empty.');
+    else patch.mobile = mobile;
+  }
+  if (body.students !== undefined) patch.students = str(body.students);
+  if (body.availability !== undefined) patch.availability = str(body.availability);
+  if (body.shirtSize !== undefined) {
+    if (!SHIRT_SIZES.includes(body.shirtSize)) errors.push('A valid t-shirt size is required.');
+    else patch.shirtSize = body.shirtSize;
+  }
+  for (const f of ['name', 'mobile', 'students', 'availability'] as const) {
+    const v = patch[f];
+    if (typeof v === 'string' && v.length > MAX_LEN) errors.push(`${f} is too long.`);
+  }
+  if (errors.length) return json(400, { errors });
+
+  try {
+    await volunteers.updateEntity(patch as VolunteerEntity, 'Merge');
+    // Keep the denormalized name on the volunteer's shift rows in sync.
+    if (patch.name !== undefined) {
+      const shifts = await getTable(TABLES.shifts);
+      for await (const s of shifts.listEntities<ShiftEntity>({
+        queryOptions: { filter: `RowKey eq '${odata(auth.volunteerId)}'` },
+      })) {
+        await shifts.updateEntity(
+          { partitionKey: s.partitionKey, rowKey: auth.volunteerId, volunteerName: patch.name } as ShiftEntity,
+          'Merge',
+        );
+      }
+    }
+    return json(200, { ok: true });
+  } catch (err) {
+    context.error('my: account update failed', err);
+    return json(500, { errors: ['Could not save your changes. Please try again later.'] });
+  }
+}
+
 app.http('my-session', { methods: ['GET', 'OPTIONS'], authLevel: 'anonymous', route: 'my/session', handler: mySession });
+app.http('my-account', { methods: ['GET', 'POST', 'OPTIONS'], authLevel: 'anonymous', route: 'my/account', handler: myAccount });
 app.http('my-shifts', { methods: ['GET', 'POST', 'OPTIONS'], authLevel: 'anonymous', route: 'my/shifts', handler: myShifts });
 app.http('my-shifts-remove', { methods: ['POST', 'OPTIONS'], authLevel: 'anonymous', route: 'my/shifts/remove', handler: myShiftRemove });
 app.http('my-roster', { methods: ['GET', 'OPTIONS'], authLevel: 'anonymous', route: 'my/roster', handler: myRoster });

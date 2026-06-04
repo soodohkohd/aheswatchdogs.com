@@ -16,7 +16,9 @@ import { MyShiftsService } from '../../my-shifts.service';
 import { EnrollmentService } from '../../enrollment.service';
 import { VolunteerAuthService } from '../../volunteer-auth.service';
 import { MonthCalendar } from '../../shared/month-calendar/month-calendar';
-import { EnrollmentState, RosterPerson } from '../../models';
+import { EnrollmentState, MyAccount, MyAccountUpdate, RosterPerson } from '../../models';
+
+const SHIRT_SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
 
 /** A training video player with its canonical slug (matches the API's
  *  TRAINING_VIDEOS). Self-hosted on Azure Blob Storage (Range-capable). */
@@ -106,6 +108,15 @@ export class Schedule implements OnInit {
   protected readonly actionError = signal<string | null>(null);
   protected readonly working = signal(false);
 
+  // ---- My account (self-service edit) ----
+  protected readonly shirtSizes = SHIRT_SIZES;
+  protected readonly myAccount = signal<MyAccount | null>(null);
+  protected readonly editingAccount = signal(false);
+  protected readonly accountDraft = signal<MyAccountUpdate | null>(null);
+  protected readonly savingAccount = signal(false);
+  protected readonly accountError = signal<string | null>(null);
+  protected readonly accountSaved = signal(false);
+
   // ---- Delete-account flow ----
   protected readonly confirmingDelete = signal(false);
   protected readonly deleting = signal(false);
@@ -157,7 +168,15 @@ export class Schedule implements OnInit {
     if (this.auth.loggedIn()) {
       this.loadMyDates();
       this.loadEnrollment();
+      this.loadAccount();
     }
+  }
+
+  private loadAccount(): void {
+    this.myShifts.account().subscribe({
+      next: (a) => this.myAccount.set(a),
+      error: () => {},
+    });
   }
 
   private loadMyDates(): void {
@@ -449,9 +468,65 @@ export class Schedule implements OnInit {
     this.selectedDate.set(null);
     this.enrollment.set(null);
     this.watchedTo.clear();
+    this.myAccount.set(null);
+    this.cancelEditAccount();
+    this.accountSaved.set(false);
     this.confirmingDelete.set(false);
     this.resetLogin();
     this.emailForm.reset({ email: '' });
+  }
+
+  // ---- my account edit ----
+
+  protected startEditAccount(): void {
+    const a = this.myAccount();
+    if (!a) return;
+    this.accountError.set(null);
+    this.accountSaved.set(false);
+    this.accountDraft.set({
+      name: a.name,
+      mobile: a.mobile,
+      students: a.students,
+      availability: a.availability,
+      shirtSize: a.shirtSize,
+    });
+    this.editingAccount.set(true);
+  }
+
+  protected cancelEditAccount(): void {
+    this.editingAccount.set(false);
+    this.accountDraft.set(null);
+    this.accountError.set(null);
+  }
+
+  protected patchAccount<K extends keyof MyAccountUpdate>(field: K, value: MyAccountUpdate[K]): void {
+    this.accountDraft.update((d) => (d ? { ...d, [field]: value } : d));
+  }
+
+  protected saveAccount(): void {
+    const draft = this.accountDraft();
+    if (!draft || this.savingAccount()) return;
+    if (!draft.name.trim() || !draft.mobile.trim()) {
+      this.accountError.set('Name and mobile are required.');
+      return;
+    }
+    this.savingAccount.set(true);
+    this.accountError.set(null);
+    this.myShifts.updateAccount(draft).subscribe({
+      next: () => {
+        this.savingAccount.set(false);
+        this.editingAccount.set(false);
+        this.accountSaved.set(true);
+        // Reflect locally + refresh rosters (the denormalized name may have changed).
+        this.myAccount.update((a) => (a ? { ...a, ...draft } : a));
+        this.accountDraft.set(null);
+        this.reloadCurrentAndMine();
+      },
+      error: (err) => {
+        this.savingAccount.set(false);
+        this.accountError.set(err?.error?.errors?.[0] ?? 'Could not save your changes. Please try again.');
+      },
+    });
   }
 
   // ---- delete account ----

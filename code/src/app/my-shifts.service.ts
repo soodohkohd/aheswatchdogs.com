@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../environments/environment';
-import { RosterDay } from './models';
+import { MyAccount, MyAccountUpdate, RosterDay } from './models';
 
 /** Volunteer-tier schedule calls (require a session token, attached by the
  *  volunteerAuthInterceptor). Roster shows names but no PII; sign-up/remove
@@ -39,5 +39,15 @@ export class MyShiftsService {
   /** Delete the signed-in volunteer's account + all their days. */
   deleteAccount(): Observable<{ deleted: boolean; shiftsRemoved: number }> {
     return this.http.post<{ deleted: boolean; shiftsRemoved: number }>(`${this.base}/account/delete`, {});
+  }
+
+  /** The signed-in volunteer's own editable profile. */
+  account(): Observable<MyAccount> {
+    return this.http.get<MyAccount>(`${this.base}/account`);
+  }
+
+  /** Update the signed-in volunteer's own contact fields. */
+  updateAccount(update: MyAccountUpdate): Observable<{ ok: boolean }> {
+    return this.http.post<{ ok: boolean }>(`${this.base}/account`, update);
   }
 }

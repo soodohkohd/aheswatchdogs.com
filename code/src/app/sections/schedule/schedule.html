@@ -247,8 +247,74 @@
           }
         </div>
 
+        @if (myAccount(); as acct) {
+          <div class="card my-account">
+            <div class="acct-head">
+              <h2>My account</h2>
+              @if (!editingAccount()) {
+                <button type="button" class="btn btn-ghost btn-sm" (click)="startEditAccount()">Edit</button>
+              }
+            </div>
+
+            @if (accountSaved() && !editingAccount()) {
+              <p class="info" role="status">Your account was updated.</p>
+            }
+
+            @if (!editingAccount()) {
+              <dl class="acct-view">
+                <div><dt>Name</dt><dd>{{ acct.name }}</dd></div>
+                <div><dt>Email</dt><dd>{{ acct.email }}</dd></div>
+                <div><dt>Mobile</dt><dd>{{ acct.mobile }}</dd></div>
+                <div><dt>Student(s)</dt><dd>{{ acct.students || '—' }}</dd></div>
+                <div><dt>Availability</dt><dd>{{ acct.availability || '—' }}</dd></div>
+                <div><dt>T-shirt</dt><dd>{{ acct.shirtSize }}</dd></div>
+              </dl>
+            } @else if (accountDraft(); as d) {
+              <form (submit)="$event.preventDefault(); saveAccount()">
+                <div class="field">
+                  <label for="acct-name">Name</label>
+                  <input id="acct-name" type="text" [value]="d.name" (input)="patchAccount('name', $any($event.target).value)" />
+                </div>
+                <div class="field">
+                  <label>Email <span class="muted">(can’t be changed here)</span></label>
+                  <input type="email" [value]="acct.email" disabled />
+                </div>
+                <div class="field">
+                  <label for="acct-mobile">Mobile</label>
+                  <input id="acct-mobile" type="tel" [value]="d.mobile" (input)="patchAccount('mobile', $any($event.target).value)" />
+                </div>
+                <div class="field">
+                  <label for="acct-students">Student(s)</label>
+                  <textarea id="acct-students" rows="2" [value]="d.students" (input)="patchAccount('students', $any($event.target).value)"></textarea>
+                </div>
+                <div class="field">
+                  <label for="acct-avail">Availability</label>
+                  <textarea id="acct-avail" rows="2" [value]="d.availability" (input)="patchAccount('availability', $any($event.target).value)"></textarea>
+                </div>
+                <div class="field">
+                  <label for="acct-shirt">T-shirt size</label>
+                  <select id="acct-shirt" (change)="patchAccount('shirtSize', $any($event.target).value)">
+                    @for (s of shirtSizes; track s) {
+                      <option [value]="s" [selected]="s === d.shirtSize">{{ s }}</option>
+                    }
+                  </select>
+                </div>
+                @if (accountError()) {
+                  <p class="error" role="alert">{{ accountError() }}</p>
+                }
+                <div class="form-actions">
+                  <button class="btn" type="submit" [disabled]="savingAccount()">
+                    {{ savingAccount() ? 'Saving…' : 'Save changes' }}
+                  </button>
+                  <button class="btn btn-ghost btn-sm" type="button" (click)="cancelEditAccount()">Cancel</button>
+                </div>
+              </form>
+            }
+          </div>
+        }
+
         <div class="card danger-zone">
-          <h2>Account</h2>
+          <h2>Delete account</h2>
           @if (!confirmingDelete()) {
             <p class="muted">
               Delete your account and remove yourself from every day you’ve signed up for.

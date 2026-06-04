@@ -127,8 +127,28 @@
             </ul>
           }
 
+          <div class="add-existing">
+            <label for="pick-vol">Add an existing volunteer</label>
+            <div class="manual-row">
+              <select id="pick-vol" (change)="pickedVolunteerId.set($any($event.target).value)">
+                <option value="" [selected]="pickedVolunteerId() === ''">Choose a volunteer…</option>
+                @for (acct of activeAccounts(); track acct.id) {
+                  <option [value]="acct.id" [selected]="acct.id === pickedVolunteerId()">{{ acct.name }}</option>
+                }
+              </select>
+              <button
+                class="btn btn-sm"
+                type="button"
+                (click)="addExisting(selectedDate()!)"
+                [disabled]="!pickedVolunteerId() || addingExisting()"
+              >
+                {{ addingExisting() ? 'Adding…' : 'Add' }}
+              </button>
+            </div>
+          </div>
+
           <form class="manual-add" (submit)="$event.preventDefault(); addManual(selectedDate()!)">
-            <label for="manual-name">Add someone by name <span class="muted">(coordinator override — no account needed)</span></label>
+            <label for="manual-name">Or add someone by name <span class="muted">(no account needed)</span></label>
             <div class="manual-row">
               <input
                 id="manual-name"
@@ -195,10 +215,53 @@
       <div class="accounts">
         <div class="accounts-head">
           <h2>Accounts</h2>
-          <button class="btn btn-ghost btn-sm" type="button" (click)="loadAccounts()" [disabled]="accountsLoading()">
-            {{ accountsLoading() ? 'Loading…' : 'Refresh' }}
-          </button>
+          <div class="accounts-head-actions">
+            <button class="btn btn-sm" type="button" (click)="openCreate()">+ New account</button>
+            <button class="btn btn-ghost btn-sm" type="button" (click)="loadAccounts()" [disabled]="accountsLoading()">
+              {{ accountsLoading() ? 'Loading…' : 'Refresh' }}
+            </button>
+          </div>
         </div>
+
+        @if (showCreate()) {
+          <form class="create-account card" (submit)="$event.preventDefault(); submitCreate()">
+            <h3>New account</h3>
+            <p class="muted">The account is created <strong>active</strong> and the volunteer gets a welcome email.</p>
+            <div class="edit-grid">
+              <label>Name
+                <input type="text" [value]="createDraft().name" (input)="patchCreate('name', $any($event.target).value)" />
+              </label>
+              <label>Email
+                <input type="email" [value]="createDraft().email" (input)="patchCreate('email', $any($event.target).value)" />
+              </label>
+              <label>Mobile
+                <input type="tel" [value]="createDraft().mobile" (input)="patchCreate('mobile', $any($event.target).value)" />
+              </label>
+              <label>T-shirt size
+                <select (change)="patchCreate('shirtSize', $any($event.target).value)">
+                  @for (s of shirtSizes; track s) {
+                    <option [value]="s" [selected]="s === createDraft().shirtSize">{{ s }}</option>
+                  }
+                </select>
+              </label>
+              <label class="wide">Student(s)
+                <textarea rows="2" [value]="createDraft().students" (input)="patchCreate('students', $any($event.target).value)"></textarea>
+              </label>
+              <label class="wide">Availability
+                <textarea rows="2" [value]="createDraft().availability" (input)="patchCreate('availability', $any($event.target).value)"></textarea>
+              </label>
+            </div>
+            @if (createError()) {
+              <p class="error" role="alert">{{ createError() }}</p>
+            }
+            <div class="edit-actions">
+              <button class="btn btn-sm" type="submit" [disabled]="creating()">
+                {{ creating() ? 'Creating…' : 'Create account' }}
+              </button>
+              <button class="btn btn-ghost btn-sm" type="button" (click)="cancelCreate()">Cancel</button>
+            </div>
+          </form>
+        }
 
         @if (accountNotice()) {
           <p class="info" role="status">{{ accountNotice() }}</p>
@@ -207,6 +270,7 @@
           <p class="error" role="alert">{{ accountsError() }}</p>
         }
 
+        @if (!showCreate()) {
         @if (accountsLoading() && accounts().length === 0) {
           <p class="muted">Loading accounts…</p>
         } @else if (accounts().length === 0) {
@@ -357,6 +421,7 @@
             }
           </div>
           }
+        }
         }
       </div>
     }
