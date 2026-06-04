@@ -51,6 +51,23 @@ async function requestCode(request: HttpRequest, context: InvocationContext): Pr
       });
     }
 
+    // Only approved (active) accounts may sign in.
+    if (volunteer.status !== 'active') {
+      if (volunteer.status === 'pending') {
+        return json(403, {
+          pendingReview: true,
+          errors: [
+            'Your registration is still under review. You’ll get a welcome email once a coordinator approves it.',
+          ],
+        });
+      }
+      // denied, inactive, or legacy/unknown — can't sign in.
+      return json(403, {
+        notApproved: true,
+        errors: ['This account isn’t able to sign in. Please contact support@aheswatchdogs.com.'],
+      });
+    }
+
     const { code, expires } = newLoginCode();
     const volunteers = await getTable(TABLES.volunteers);
     await volunteers.updateEntity(
@@ -99,6 +116,11 @@ async function verifyCode(request: HttpRequest, context: InvocationContext): Pro
     if (!volunteer || !volunteer.loginCode || !volunteer.loginCodeExpires) {
       return json(400, { errors: ['No active code. Request a new one.'] });
     }
+    // Defense in depth: only active accounts can complete sign-in (request-code
+    // already blocks non-active, but a stale code shouldn't slip through).
+    if (volunteer.status !== 'active') {
+      return json(403, { errors: ['This account isn’t able to sign in yet.'] });
+    }
     if (volunteer.loginCodeExpires < new Date().toISOString()) {
       return json(410, { expired: true, errors: ['That code has expired. Request a new one.'] });
     }
@@ -119,12 +141,12 @@ async function verifyCode(request: HttpRequest, context: InvocationContext): Pro
       return json(400, { errors: ['That code is incorrect. Check it and try again.'] });
     }
 
-    // Success: clear the code, mark active, stamp first verification.
+    // Success: clear the code and stamp first email-ownership proof. Activation
+    // is owned by coordinator approval, so status is left as-is (already active).
     await volunteers.updateEntity(
       {
         partitionKey: 'volunteer',
         rowKey: volunteer.rowKey,
-        status: 'active',
         verifiedAt: volunteer.verifiedAt || new Date().toISOString(),
         loginCode: '',
         loginCodeExpires: '',

@@ -6,10 +6,13 @@ export type ShirtSize = 'S' | 'M' | 'L' | 'XL' | 'XXL';
 export const SHIRT_SIZES: ShirtSize[] = ['S', 'M', 'L', 'XL', 'XXL'];
 
 /** Account state for a volunteer. A record is created `pending` at sign-up and
- *  flips to `active` the first time the volunteer proves email ownership by
- *  logging in with an emailed 6-digit code. Legacy records with no `status`
- *  are treated as NOT active (see `isActive`). */
-export type VolunteerStatus = 'pending' | 'active';
+ *  a coordinator reviews it in the admin Accounts tab:
+ *   - `pending`  — new, awaiting review (cannot be edited; must be approved/denied)
+ *   - `active`   — approved; **the only state that can sign in** (welcome email sent on approval)
+ *   - `denied`   — the deliberate "deny" decision at review time
+ *   - `inactive` — a coordinator turned off a previously-active account later
+ *  Legacy records with no `status` are treated as NOT active (see `isActive`). */
+export type VolunteerStatus = 'pending' | 'active' | 'denied' | 'inactive';
 
 /** Login code: 6 digits, valid 10 minutes, max 5 wrong attempts. */
 export const LOGIN_CODE_TTL_MS = 10 * 60 * 1000;
@@ -44,6 +47,10 @@ export interface VolunteerEntity extends TableEntity {
   status?: VolunteerStatus;
   /** ISO timestamp the volunteer first proved email ownership (code login). */
   verifiedAt?: string;
+  /** ISO timestamp a coordinator approved/denied the registration. */
+  reviewedAt?: string;
+  /** ISO timestamp the approval welcome email was sent. */
+  welcomeSentAt?: string;
   /** Current single-use 6-digit login code (hashed is overkill at this scale;
    *  stored plain, short-lived). Cleared on successful login. */
   loginCode?: string;
@@ -94,6 +101,44 @@ export interface EnrollmentState {
 /** Payload to record a watched training video. */
 export interface WatchVideoRequest {
   video: string; // a TRAINING_VIDEOS slug
+}
+
+/** One account row for the admin Accounts tab — volunteer details + status +
+ *  enrollment progress (PTA + per-video watched). */
+export interface AccountSummary {
+  id: string;
+  name: string;
+  email: string;
+  mobile: string;
+  students: string;
+  availability: string;
+  shirtSize: ShirtSize;
+  status: VolunteerStatus | 'unknown';
+  createdAt: string;
+  reviewedAt?: string;
+  enrollment: {
+    ptaRegistered: boolean;
+    trainingVideosCompleted: boolean;
+    videos: Array<{ slug: string; title: string; watched: boolean }>;
+  };
+}
+
+/** Admin payload to update a volunteer's editable fields and/or status, plus
+ *  manually-managed enrollment flags (PTA has no automated link to this app, so
+ *  coordinators set it by hand; video flags are overridable for flexibility). */
+export interface AccountUpdateRequest {
+  id: string;
+  name?: string;
+  email?: string;
+  mobile?: string;
+  students?: string;
+  availability?: string;
+  shirtSize?: ShirtSize;
+  status?: VolunteerStatus;
+  /** Manually set PTA-registered (no automated PTA integration). */
+  ptaRegistered?: boolean;
+  /** Manual override of which training-video slugs count as watched. */
+  videosWatched?: string[];
 }
 
 /** Passwordless login: request a 6-digit code, then exchange it for a session. */

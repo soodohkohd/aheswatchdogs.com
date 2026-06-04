@@ -1,8 +1,10 @@
 import { Component, ElementRef, OnInit, computed, effect, inject, signal, viewChild } from '@angular/core';
 
 import { AuthService } from '../../auth.service';
-import { AdminService, RosterDay } from '../../admin.service';
+import { Account, AccountStatus, AccountUpdate, AdminService, RosterDay } from '../../admin.service';
 import { MonthCalendar } from '../../shared/month-calendar/month-calendar';
+
+type AdminTab = 'schedule' | 'accounts';
 
 // Google Identity Services global (loaded from gsi/client when a client ID is set).
 declare global {
@@ -19,6 +21,11 @@ declare global {
 }
 
 const GSI_SRC = 'https://accounts.google.com/gsi/client';
+
+/** Accounts per page on the Accounts tab. */
+const ACCOUNTS_PAGE_SIZE = 10;
+
+type StatusFilter = 'all' | AccountStatus;
 
 @Component({
   selector: 'app-admin',
@@ -41,6 +48,72 @@ export class Admin implements OnInit {
   protected readonly addingManual = signal(false);
   protected readonly gsiReady = signal(false);
   protected readonly justSignedOut = signal(false);
+
+  // ---- Accounts tab ----
+  protected readonly activeTab = signal<AdminTab>('schedule');
+  protected readonly accounts = signal<Account[]>([]);
+  protected readonly accountsLoading = signal(false);
+  protected readonly accountsError = signal<string | null>(null);
+  protected readonly accountNotice = signal<string | null>(null);
+  /** Id of the account a row-action is in flight for (disables its buttons). */
+  protected readonly accountBusy = signal<string | null>(null);
+  /** Id of the account being edited inline, and its working draft. */
+  protected readonly editingId = signal<string | null>(null);
+  protected readonly editDraft = signal<AccountUpdate | null>(null);
+  /** Id pending a delete confirmation. */
+  protected readonly confirmDeleteId = signal<string | null>(null);
+  protected readonly shirtSizes = ['S', 'M', 'L', 'XL', 'XXL'];
+  /** Editable statuses — `pending` is omitted: a pending account must be
+   *  Approved or Denied first (it isn't editable). */
+  protected readonly statuses: AccountStatus[] = ['active', 'inactive', 'denied'];
+
+  protected readonly pendingCount = computed(
+    () => this.accounts().filter((a) => a.status === 'pending').length,
+  );
+
+  // ---- search / filter / pagination ----
+  protected readonly searchTerm = signal('');
+  protected readonly statusFilter = signal<StatusFilter>('all');
+  protected readonly page = signal(1);
+  protected readonly statusFilters: Array<{ value: StatusFilter; label: string }> = [
+    { value: 'all', label: 'All statuses' },
+    { value: 'pending', label: 'Pending' },
+    { value: 'active', label: 'Active' },
+    { value: 'inactive', label: 'Inactive' },
+    { value: 'denied', label: 'Denied' },
+  ];
+
+  /** Accounts after status filter + text search (name/email/mobile/students). */
+  protected readonly filteredAccounts = computed<Account[]>(() => {
+    const q = this.searchTerm().trim().toLowerCase();
+    const status = this.statusFilter();
+    return this.accounts().filter((a) => {
+      if (status !== 'all' && a.status !== status) return false;
+      if (q) {
+        const hay = `${a.name} ${a.email} ${a.mobile} ${a.students}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  });
+
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.filteredAccounts().length / ACCOUNTS_PAGE_SIZE)),
+  );
+  /** Page clamped to the valid range (filtered list can shrink under us). */
+  protected readonly currentPage = computed(() => Math.min(this.page(), this.totalPages()));
+
+  protected readonly pagedAccounts = computed<Account[]>(() => {
+    const start = (this.currentPage() - 1) * ACCOUNTS_PAGE_SIZE;
+    return this.filteredAccounts().slice(start, start + ACCOUNTS_PAGE_SIZE);
+  });
+
+  protected readonly rangeStart = computed(() =>
+    this.filteredAccounts().length === 0 ? 0 : (this.currentPage() - 1) * ACCOUNTS_PAGE_SIZE + 1,
+  );
+  protected readonly rangeEnd = computed(() =>
+    Math.min(this.currentPage() * ACCOUNTS_PAGE_SIZE, this.filteredAccounts().length),
+  );
 
   /** Roster keyed by ISO date, feeding both the calendar and the mobile list. */
   private readonly roster = signal<Map<string, RosterDay>>(new Map());
@@ -140,6 +213,15 @@ export class Admin implements OnInit {
     this.selectedDate.set(null);
     this.authError.set(null);
     this.justSignedOut.set(true);
+    this.activeTab.set('schedule');
+    this.accounts.set([]);
+    this.cancelEdit();
+    this.confirmDeleteId.set(null);
+    this.accountNotice.set(null);
+    this.accountsError.set(null);
+    this.searchTerm.set('');
+    this.statusFilter.set('all');
+    this.page.set(1);
   }
 
   // --- date helpers ---
@@ -165,11 +247,14 @@ export class Admin implements OnInit {
     };
   }
 
-  /** Initial load: cover the mobile upcoming window + the current month. */
+  /** Initial load: cover the mobile upcoming window + the current month, and
+   *  load accounts so the Accounts tab badge (pending count) is populated as
+   *  soon as the coordinator signs in — not only when they open the tab. */
   private loadInitial(): void {
     const today = this.iso(new Date());
     const { from } = this.monthBounds(this.calMonth());
     this.loadRange(from < today ? from : today, this.addDays(today, 56));
+    this.loadAccounts();
   }
 
   /** Load a date range's roster, replacing any stale entries inside it. */
@@ -255,5 +340,197 @@ export class Admin implements OnInit {
         this.authError.set('Could not remove that sign-up. Please try again.');
       },
     });
+  }
+
+  // ---------- Accounts tab ----------
+
+  protected setTab(tab: AdminTab): void {
+    this.activeTab.set(tab);
+    if (tab === 'accounts' && this.accounts().length === 0) this.loadAccounts();
+  }
+
+  protected loadAccounts(): void {
+    this.accountsLoading.set(true);
+    this.accountsError.set(null);
+    this.adminService.accounts().subscribe({
+      next: ({ accounts }) => {
+        this.accounts.set(accounts);
+        this.accountsLoading.set(false);
+      },
+      error: () => {
+        this.accountsLoading.set(false);
+        this.accountsError.set('Could not load accounts. Try signing in again.');
+      },
+    });
+  }
+
+  protected statusLabel(s: AccountStatus): string {
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  protected onSearch(value: string): void {
+    this.searchTerm.set(value);
+    this.page.set(1);
+  }
+
+  protected onStatusFilter(value: StatusFilter): void {
+    this.statusFilter.set(value);
+    this.page.set(1);
+  }
+
+  protected prevPage(): void {
+    this.page.set(Math.max(1, this.currentPage() - 1));
+  }
+
+  protected nextPage(): void {
+    this.page.set(Math.min(this.totalPages(), this.currentPage() + 1));
+  }
+
+  /** Optimistically set an account's status locally for instant feedback. */
+  private setLocalStatus(id: string, status: AccountStatus): void {
+    this.accounts.update((list) => list.map((x) => (x.id === id ? { ...x, status } : x)));
+  }
+
+  protected approve(a: Account): void {
+    if (this.accountBusy()) return;
+    this.accountBusy.set(a.id);
+    this.accountsError.set(null);
+    this.accountNotice.set(null);
+    this.setLocalStatus(a.id, 'active'); // instant feedback; reconciled below
+    this.adminService.approveAccount(a.id).subscribe({
+      next: (res) => {
+        this.accountBusy.set(null);
+        this.accountNotice.set(
+          res.emailError
+            ? `${a.name} approved, but the welcome email failed to send.`
+            : `${a.name} approved — welcome email sent.`,
+        );
+        this.loadAccounts();
+      },
+      error: (err) => {
+        this.accountBusy.set(null);
+        this.accountsError.set(err?.error?.errors?.[0] ?? 'Could not approve. Please try again.');
+        this.loadAccounts(); // revert the optimistic change to server truth
+      },
+    });
+  }
+
+  protected deny(a: Account): void {
+    if (this.accountBusy()) return;
+    this.accountBusy.set(a.id);
+    this.accountsError.set(null);
+    this.accountNotice.set(null);
+    this.setLocalStatus(a.id, 'denied'); // instant feedback; reconciled below
+    this.adminService.denyAccount(a.id).subscribe({
+      next: () => {
+        this.accountBusy.set(null);
+        this.accountNotice.set(`${a.name} denied.`);
+        this.loadAccounts();
+      },
+      error: (err) => {
+        this.accountBusy.set(null);
+        this.accountsError.set(err?.error?.errors?.[0] ?? 'Could not deny. Please try again.');
+        this.loadAccounts(); // revert the optimistic change to server truth
+      },
+    });
+  }
+
+  // ---- inline edit ----
+
+  protected startEdit(a: Account): void {
+    if (a.status === 'pending') return; // must be approved/denied first
+    this.confirmDeleteId.set(null);
+    this.editingId.set(a.id);
+    this.editDraft.set({
+      id: a.id,
+      name: a.name,
+      email: a.email,
+      mobile: a.mobile,
+      students: a.students,
+      availability: a.availability,
+      shirtSize: a.shirtSize,
+      // Pending accounts aren't editable; legacy/unknown defaults to active.
+      status: a.status === 'active' || a.status === 'inactive' || a.status === 'denied' ? a.status : 'active',
+      ptaRegistered: a.enrollment.ptaRegistered,
+      videosWatched: a.enrollment.videos.filter((v) => v.watched).map((v) => v.slug),
+    });
+  }
+
+  protected cancelEdit(): void {
+    this.editingId.set(null);
+    this.editDraft.set(null);
+  }
+
+  /** Patch a single field on the working edit draft. */
+  protected patchDraft<K extends keyof AccountUpdate>(field: K, value: AccountUpdate[K]): void {
+    this.editDraft.update((d) => (d ? { ...d, [field]: value } : d));
+  }
+
+  protected toggleVideo(slug: string, watched: boolean): void {
+    this.editDraft.update((d) => {
+      if (!d) return d;
+      const set = new Set(d.videosWatched);
+      if (watched) set.add(slug);
+      else set.delete(slug);
+      return { ...d, videosWatched: [...set] };
+    });
+  }
+
+  protected saveEdit(): void {
+    const draft = this.editDraft();
+    if (!draft || this.accountBusy()) return;
+    this.accountBusy.set(draft.id);
+    this.accountsError.set(null);
+    this.accountNotice.set(null);
+    this.adminService.updateAccount(draft).subscribe({
+      next: () => {
+        this.accountBusy.set(null);
+        this.accountNotice.set(`${draft.name} updated.`);
+        this.cancelEdit();
+        this.loadAccounts();
+      },
+      error: (err) => {
+        this.accountBusy.set(null);
+        this.accountsError.set(err?.error?.errors?.[0] ?? 'Could not save changes. Please try again.');
+      },
+    });
+  }
+
+  // ---- delete ----
+
+  protected askDeleteAccount(a: Account): void {
+    this.editingId.set(null);
+    this.confirmDeleteId.set(a.id);
+  }
+
+  protected cancelDeleteAccount(): void {
+    this.confirmDeleteId.set(null);
+  }
+
+  protected confirmDeleteAccount(a: Account): void {
+    if (this.accountBusy()) return;
+    this.accountBusy.set(a.id);
+    this.accountsError.set(null);
+    this.accountNotice.set(null);
+    this.adminService.deleteAccount(a.id).subscribe({
+      next: () => {
+        this.accountBusy.set(null);
+        this.confirmDeleteId.set(null);
+        this.accountNotice.set(`${a.name}'s account was deleted.`);
+        this.loadAccounts();
+      },
+      error: (err) => {
+        this.accountBusy.set(null);
+        this.accountsError.set(err?.error?.errors?.[0] ?? 'Could not delete the account. Please try again.');
+      },
+    });
+  }
+
+  protected formatDateTime(iso: string): string {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(new Date(iso));
   }
 }

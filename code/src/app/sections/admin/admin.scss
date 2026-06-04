@@ -293,3 +293,318 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ---- Tabs ---- */
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 2px solid var(--line);
+  margin: 0.5rem 0 1.25rem;
+}
+
+.tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  padding: 0.6rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tab.active {
+  color: var(--ah-green-deep);
+  border-bottom-color: var(--ah-green);
+}
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--ah-red);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* ---- Accounts ---- */
+.accounts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.account-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.account-card.pending {
+  border-color: var(--ah-green);
+  box-shadow: inset 0 0 0 1px var(--ah-green-soft);
+}
+
+.acct-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.acct-id {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.acct-name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--ah-green-deep);
+}
+
+.acct-reg {
+  font-size: 0.8rem;
+}
+
+.status-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  color: #fff;
+}
+
+.status-badge.st-active {
+  background: var(--ah-green);
+}
+.status-badge.st-pending {
+  background: #c9821a;
+}
+.status-badge.st-denied {
+  background: var(--ah-red);
+}
+.status-badge.st-inactive {
+  background: #6b7280;
+}
+.status-badge.st-unknown {
+  background: #888;
+}
+
+.acct-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.acct-details > div {
+  display: flex;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.acct-details dt {
+  color: var(--ink-soft);
+  margin: 0;
+  min-width: 5.5rem;
+}
+
+.acct-details dd {
+  margin: 0;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.acct-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0.85rem;
+}
+
+.chip {
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  background: #f0f0f0;
+  color: #777;
+}
+
+.chip.on {
+  background: var(--ah-green-soft);
+  color: var(--ah-green-deep);
+}
+
+.acct-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.del-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  color: var(--ah-red-deep);
+}
+
+.btn-link.danger {
+  color: var(--ah-red);
+}
+
+/* ---- Account edit form ---- */
+.acct-edit {
+  margin-top: 0.5rem;
+}
+
+.edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.edit-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.edit-grid label.wide {
+  grid-column: 1 / -1;
+}
+
+.edit-grid input,
+.edit-grid select,
+.edit-grid textarea {
+  font: inherit;
+  font-weight: 400;
+  color: var(--ink);
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.edit-grid textarea {
+  resize: vertical;
+}
+
+.edit-grid input:focus,
+.edit-grid select:focus,
+.edit-grid textarea:focus {
+  outline: 2px solid var(--ah-green);
+  outline-offset: 1px;
+  border-color: var(--ah-green);
+}
+
+.edit-enroll {
+  margin: 0.85rem 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.6rem 0.85rem;
+}
+
+.edit-enroll legend {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  padding: 0 0.35rem;
+}
+
+.edit-enroll .check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  padding: 0.2rem 0;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+@media (max-width: 640px) {
+  .edit-grid {
+    grid-template-columns: 1fr;
+  }
+  .acct-details {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Accounts controls (search + filter) + pagination ---- */
+.accounts-controls {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.acct-search {
+  flex: 1 1 220px;
+  font: inherit;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.acct-filter {
+  font: inherit;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.acct-search:focus,
+.acct-filter:focus {
+  outline: 2px solid var(--ah-green);
+  outline-offset: 1px;
+  border-color: var(--ah-green);
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.pager-btns {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.pager-pos {
+  color: var(--ink-soft);
+  font-weight: 600;
+}

@@ -39,6 +39,10 @@
   .lede {
     max-width: calc((100% - 1rem) * 2 / 3);
   }
+  /* Logged out there's no calendar to align to — let the intro span full width. */
+  .lede.lede-wide {
+    max-width: none;
+  }
   /* Desktop: calendar (left) then side column (right) in source order. */
   .side {
     order: 0;
@@ -337,6 +341,16 @@
 
 .my-days li:last-child {
   border-bottom: 0;
+}
+
+/* ---- Logged-out view: just the sign-in card, centered ---- */
+.signin-only {
+  max-width: 460px;
+  margin: 0 auto;
+}
+
+.signin-only > .card + .card {
+  margin-top: 1rem;
 }
 
 /* ---- Training-video gate (shown until both videos are watched) ---- */

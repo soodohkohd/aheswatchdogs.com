@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 import { getTable } from '../storage/tables';
 import { json, preflight } from '../http';
+import { sendRegistrationNotification } from '../email';
 import {
   EnrollmentEntity,
   SHIRT_SIZES,
@@ -80,8 +81,8 @@ export async function signup(
       });
     }
 
-    // New volunteer → created as pending. They become active the first time they
-    // sign in with an emailed code (see auth/verify-code).
+    // New volunteer → created as pending. A coordinator approves/denies it in
+    // the admin dashboard's Accounts tab; only approval makes it active.
     const id = randomUUID();
     const volunteer: VolunteerEntity = {
       partitionKey: 'volunteer',
@@ -102,6 +103,14 @@ export async function signup(
       updatedAt: now,
     };
     await enrollment.createEntity(status);
+
+    // Notify the coordinators (with a link to the admin dashboard to review) —
+    // best-effort; a mail failure must not fail the registration.
+    try {
+      await sendRegistrationNotification({ ...value, createdAt: now }, context);
+    } catch (mailErr) {
+      context.error('signup: registration notification failed to send', mailErr);
+    }
 
     return json(201, { id });
   } catch (err) {

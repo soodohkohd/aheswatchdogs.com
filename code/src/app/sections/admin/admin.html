@@ -39,6 +39,32 @@
       <p class="error" role="alert">{{ authError() }}</p>
     }
 
+    <!-- Tabs -->
+    <div class="tabs" role="tablist">
+      <button
+        type="button"
+        role="tab"
+        class="tab"
+        [class.active]="activeTab() === 'schedule'"
+        (click)="setTab('schedule')"
+      >
+        Schedule
+      </button>
+      <button
+        type="button"
+        role="tab"
+        class="tab"
+        [class.active]="activeTab() === 'accounts'"
+        (click)="setTab('accounts')"
+      >
+        Accounts
+        @if (pendingCount() > 0) {
+          <span class="tab-badge">{{ pendingCount() }}</span>
+        }
+      </button>
+    </div>
+
+    @if (activeTab() === 'schedule') {
     <!-- Desktop: calendar + selected-day roster panel -->
     <div class="admin-grid desktop-only">
       <div class="card">
@@ -163,5 +189,176 @@
         }
       }
     </div>
+    }
+
+    @if (activeTab() === 'accounts') {
+      <div class="accounts">
+        <div class="accounts-head">
+          <h2>Accounts</h2>
+          <button class="btn btn-ghost btn-sm" type="button" (click)="loadAccounts()" [disabled]="accountsLoading()">
+            {{ accountsLoading() ? 'Loading…' : 'Refresh' }}
+          </button>
+        </div>
+
+        @if (accountNotice()) {
+          <p class="info" role="status">{{ accountNotice() }}</p>
+        }
+        @if (accountsError()) {
+          <p class="error" role="alert">{{ accountsError() }}</p>
+        }
+
+        @if (accountsLoading() && accounts().length === 0) {
+          <p class="muted">Loading accounts…</p>
+        } @else if (accounts().length === 0) {
+          <p class="muted">No registrations yet.</p>
+        } @else {
+          <div class="accounts-controls">
+            <input
+              type="search"
+              class="acct-search"
+              placeholder="Search name, email, mobile…"
+              [value]="searchTerm()"
+              (input)="onSearch($any($event.target).value)"
+            />
+            <select class="acct-filter" (change)="onStatusFilter($any($event.target).value)">
+              @for (f of statusFilters; track f.value) {
+                <option [value]="f.value" [selected]="f.value === statusFilter()">{{ f.label }}</option>
+              }
+            </select>
+          </div>
+
+          @if (filteredAccounts().length === 0) {
+            <p class="muted">No accounts match your search or filter.</p>
+          } @else {
+          @for (a of pagedAccounts(); track a.id) {
+            <div class="account-card" [class.pending]="a.status === 'pending'">
+              <div class="acct-top">
+                <div class="acct-id">
+                  <span class="acct-name">{{ a.name }}</span>
+                  <span class="status-badge st-{{ a.status }}">{{ statusLabel(a.status) }}</span>
+                </div>
+                <span class="acct-reg muted">Registered {{ formatDateTime(a.createdAt) }}</span>
+              </div>
+
+              @if (editingId() !== a.id) {
+                <dl class="acct-details">
+                  <div><dt>Email</dt><dd>{{ a.email }}</dd></div>
+                  <div><dt>Mobile</dt><dd>{{ a.mobile }}</dd></div>
+                  <div><dt>Student(s)</dt><dd>{{ a.students || '—' }}</dd></div>
+                  <div><dt>Availability</dt><dd>{{ a.availability || '—' }}</dd></div>
+                  <div><dt>T-shirt</dt><dd>{{ a.shirtSize }}</dd></div>
+                </dl>
+
+                <div class="acct-progress">
+                  <span class="chip" [class.on]="a.enrollment.ptaRegistered">
+                    PTA {{ a.enrollment.ptaRegistered ? '✓' : '—' }}
+                  </span>
+                  @for (v of a.enrollment.videos; track v.slug) {
+                    <span class="chip" [class.on]="v.watched">{{ v.title }} {{ v.watched ? '✓' : '—' }}</span>
+                  }
+                </div>
+
+                <div class="acct-actions">
+                  @if (a.status === 'pending') {
+                    <button class="btn btn-sm" type="button" (click)="approve(a)" [disabled]="accountBusy() === a.id">
+                      {{ accountBusy() === a.id ? 'Working…' : 'Approve' }}
+                    </button>
+                    <button class="btn btn-ghost btn-sm" type="button" (click)="deny(a)" [disabled]="accountBusy() === a.id">
+                      Deny
+                    </button>
+                  } @else {
+                    <button class="btn btn-ghost btn-sm" type="button" (click)="startEdit(a)">Edit</button>
+                  }
+                  @if (confirmDeleteId() === a.id) {
+                    <span class="del-confirm">
+                      Delete?
+                      <button class="btn-link danger" type="button" (click)="confirmDeleteAccount(a)" [disabled]="accountBusy() === a.id">
+                        Yes
+                      </button>
+                      <button class="btn-link" type="button" (click)="cancelDeleteAccount()">Cancel</button>
+                    </span>
+                  } @else {
+                    <button class="btn-link danger" type="button" (click)="askDeleteAccount(a)">Delete</button>
+                  }
+                </div>
+              } @else if (editDraft(); as d) {
+                <form class="acct-edit" (submit)="$event.preventDefault(); saveEdit()">
+                  <div class="edit-grid">
+                    <label>Name
+                      <input type="text" [value]="d.name" (input)="patchDraft('name', $any($event.target).value)" />
+                    </label>
+                    <label>Email
+                      <input type="email" [value]="d.email" (input)="patchDraft('email', $any($event.target).value)" />
+                    </label>
+                    <label>Mobile
+                      <input type="tel" [value]="d.mobile" (input)="patchDraft('mobile', $any($event.target).value)" />
+                    </label>
+                    <label>T-shirt size
+                      <select (change)="patchDraft('shirtSize', $any($event.target).value)">
+                        @for (s of shirtSizes; track s) {
+                          <option [value]="s" [selected]="s === d.shirtSize">{{ s }}</option>
+                        }
+                      </select>
+                    </label>
+                    <label class="wide">Student(s)
+                      <textarea rows="2" [value]="d.students" (input)="patchDraft('students', $any($event.target).value)"></textarea>
+                    </label>
+                    <label class="wide">Availability
+                      <textarea rows="2" [value]="d.availability" (input)="patchDraft('availability', $any($event.target).value)"></textarea>
+                    </label>
+                    <label>Status
+                      <select (change)="patchDraft('status', $any($event.target).value)">
+                        @for (s of statuses; track s) {
+                          <option [value]="s" [selected]="s === d.status">{{ statusLabel(s) }}</option>
+                        }
+                      </select>
+                    </label>
+                  </div>
+
+                  <fieldset class="edit-enroll">
+                    <legend>Enrollment (manually managed)</legend>
+                    <label class="check">
+                      <input type="checkbox" [checked]="d.ptaRegistered" (change)="patchDraft('ptaRegistered', $any($event.target).checked)" />
+                      PTA registered
+                    </label>
+                    @for (v of a.enrollment.videos; track v.slug) {
+                      <label class="check">
+                        <input type="checkbox" [checked]="d.videosWatched.includes(v.slug)" (change)="toggleVideo(v.slug, $any($event.target).checked)" />
+                        {{ v.title }} watched
+                      </label>
+                    }
+                  </fieldset>
+
+                  <div class="edit-actions">
+                    <button class="btn btn-sm" type="submit" [disabled]="accountBusy() === a.id">
+                      {{ accountBusy() === a.id ? 'Saving…' : 'Save changes' }}
+                    </button>
+                    <button class="btn btn-ghost btn-sm" type="button" (click)="cancelEdit()">Cancel</button>
+                  </div>
+                </form>
+              }
+            </div>
+          }
+
+          <div class="pager">
+            <span class="muted">
+              Showing {{ rangeStart() }}–{{ rangeEnd() }} of {{ filteredAccounts().length }}
+            </span>
+            @if (totalPages() > 1) {
+              <div class="pager-btns">
+                <button class="btn btn-ghost btn-sm" type="button" (click)="prevPage()" [disabled]="currentPage() === 1">
+                  ‹ Prev
+                </button>
+                <span class="pager-pos">Page {{ currentPage() }} of {{ totalPages() }}</span>
+                <button class="btn btn-ghost btn-sm" type="button" (click)="nextPage()" [disabled]="currentPage() === totalPages()">
+                  Next ›
+                </button>
+              </div>
+            }
+          </div>
+          }
+        }
+      </div>
+    }
   }
 </section>

@@ -9,17 +9,15 @@
       <p>Complete the form below — it replaces the paper registration form.</p>
 
       @if (submitted()) {
-        <div class="success" role="status">
+        <div #successMsg class="success" role="status">
           <h3>Thanks for signing up! 🐾</h3>
           <p>
-            You’re registered as <strong>{{ submittedEmail() }}</strong>. When you’re ready to pick
-            days on campus, head to the <a routerLink="/schedule">Schedule</a> and
-            <strong>sign in with your email</strong> — we’ll send you a 6-digit code to confirm it’s
-            you. No password to remember.
+            You’re registered as <strong>{{ submittedEmail() }}</strong>. Once a coordinator
+            verifies your registration, you’ll receive a welcome email and can sign in on the
+            <a routerLink="/schedule">Schedule</a> to choose the days you’d like to volunteer.
           </p>
           <p>
-            Next, complete steps 2 and 3 below if you haven’t yet — register with the PTA and watch
-            both training videos.
+            In the meantime, complete step 2 below if you haven’t — register with the AHES PTA.
           </p>
         </div>
       } @else {
@@ -99,21 +97,18 @@
     </li>
     <li class="card">
       <h2><span class="num">3</span> Complete the training videos</h2>
-      <p>Both videos must be completed before volunteering on campus.</p>
-      <p class="track-note">
-        ⚠️ <strong>Watching here doesn’t count toward your record.</strong> These previews are for
-        reference only. To get credit, watch them while <strong>signed in</strong> on the
-        <a routerLink="/schedule">Schedule</a> — each video is automatically checked off your
-        account when you finish it there.
+      <p>
+        Before you can be on campus, you’ll need to watch all required training videos:
       </p>
-      <div class="videos">
-        @for (video of trainingVideos; track video.src) {
-          <figure class="training-video">
-            <figcaption>{{ video.title }}</figcaption>
-            <video controls preload="metadata" [src]="video.src"></video>
-          </figure>
+      <ul class="video-titles">
+        @for (video of trainingVideos; track video.title) {
+          <li>{{ video.title }}</li>
         }
-      </div>
+      </ul>
+      <p>
+        You’ll find these videos on the <a routerLink="/schedule">Schedule</a> after you sign in —
+        each one is checked off your account automatically when you finish it.
+      </p>
     </li>
   </ol>
 </section>

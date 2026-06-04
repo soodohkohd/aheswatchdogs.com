@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, ElementRef, effect, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
@@ -18,17 +18,11 @@ export class Enroll {
   protected readonly shirtSizes: ShirtSize[] = ['S', 'M', 'L', 'XL', 'XXL'];
   protected readonly ptaRegisterUrl =
     'https://jointotem.com/ca/murrieta/antelope-hills-elementary-pta/join/register';
-  // Self-hosted in Azure Blob Storage (Range-capable, unlike pm2 serve — see
-  // CLAUDE.md "Large media on blob storage").
+  // Titles only — the actual players live on the signed-in Schedule portal,
+  // where watching is tracked (see schedule.ts trainingVideos).
   protected readonly trainingVideos = [
-    {
-      title: 'Foundational Playground Practices',
-      src: 'https://aheswatchdogsmedia.blob.core.windows.net/media/foundational-playground-practices.mp4',
-    },
-    {
-      title: 'Supporting Conflict Resolution',
-      src: 'https://aheswatchdogsmedia.blob.core.windows.net/media/supporting-conflict-resolution.mp4',
-    },
+    { title: 'Foundational Playground Practices' },
+    { title: 'Supporting Conflict Resolution' },
   ];
 
   protected readonly submitting = signal(false);
@@ -37,6 +31,17 @@ export class Enroll {
   protected readonly triedSubmit = signal(false);
   /** The email just registered (shown in the success message). */
   protected readonly submittedEmail = signal('');
+
+  /** The success card — scrolled into view once it renders after submitting. */
+  private readonly successMsg = viewChild<ElementRef<HTMLElement>>('successMsg');
+
+  constructor() {
+    // When the success card appears (after a successful submit), scroll back to
+    // the top of the page so the confirmation is the first thing they see.
+    effect(() => {
+      if (this.successMsg()) window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
 
   protected readonly form = this.fb.nonNullable.group({
     name: ['', Validators.required],
