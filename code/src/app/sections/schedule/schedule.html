@@ -166,38 +166,98 @@
         </p>
       </div>
 
-      <!-- Mobile: upcoming-days list -->
+      <!-- Mobile: upcoming-days list. The row button IS the action (sign up /
+           remove) so it's right under the thumb — no scrolling up to a panel.
+           Tapping the day itself expands that day's roster inline. -->
       <div class="card days mobile-only">
-        <h2>Upcoming days</h2>
+        <div class="days-head">
+          <h2>{{ listPage() === 0 ? 'Upcoming days' : 'Days on campus' }}</h2>
+          <span class="days-range muted">{{ listRangeLabel() }}</span>
+        </div>
         @if (loading()) {
           <p class="muted">Loading the schedule…</p>
         } @else {
+          @if (actionError()) {
+            <p class="error" role="alert">{{ actionError() }}</p>
+          }
           <ul>
             @for (day of upcomingDays(); track day.date) {
               <li [class.selected]="isSelected(day.date)" [class.mine]="isMine(day.date)">
-                <div class="day-info">
-                  <span class="day-label">{{ day.label }}</span>
-                  <span class="day-count">
-                    @if (day.count === 0) { No volunteers yet } @else { {{ day.count }} signed up }
-                    @if (isMine(day.date)) { · You’re on }
-                  </span>
-                </div>
-                @if (auth.loggedIn()) {
-                  <button type="button" class="btn btn-ghost btn-sm" (click)="pick(day.date)">
-                    {{ isSelected(day.date) ? 'Hide' : 'View' }}
+                <div class="day-row">
+                  <button
+                    type="button"
+                    class="day-info"
+                    (click)="pick(day.date)"
+                    [attr.aria-expanded]="isSelected(day.date)"
+                  >
+                    <span class="day-label">
+                      {{ day.label }}
+                      <span class="chev" aria-hidden="true">{{ isSelected(day.date) ? '▴' : '▾' }}</span>
+                    </span>
+                    <span class="day-count">
+                      @if (day.count === 0) { No volunteers yet } @else { {{ day.count }} signed up }
+                      @if (isMine(day.date)) { · You’re on }
+                    </span>
                   </button>
+                  @if (isMine(day.date)) {
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-sm day-action"
+                      (click)="removeDay(day.date)"
+                      [disabled]="working()"
+                    >
+                      {{ isWorking(day.date) ? '…' : 'Remove' }}
+                    </button>
+                  } @else {
+                    <button
+                      type="button"
+                      class="btn btn-sm day-action"
+                      (click)="signUpDay(day.date)"
+                      [disabled]="working()"
+                    >
+                      {{ isWorking(day.date) ? '…' : 'Sign up' }}
+                    </button>
+                  }
+                </div>
+
+                @if (isSelected(day.date)) {
+                  <ul class="day-roster">
+                    @if (rosterFor(day.date).length === 0) {
+                      <li class="muted">No one’s signed up yet — be the first!</li>
+                    }
+                    @for (p of rosterFor(day.date); track $index) {
+                      <li [class.me]="p.isMe">
+                        {{ p.name }}@if (p.isMe) { <span class="you-tag">you</span> }
+                      </li>
+                    }
+                  </ul>
                 }
               </li>
             }
           </ul>
         }
+
+        <!-- Two weeks per page. Prev only appears once you've moved forward. -->
+        <div class="days-nav">
+          @if (listPage() > 0) {
+            <button type="button" class="btn btn-ghost btn-sm" (click)="prevListPage()" [disabled]="loading()">
+              ← Previous 2 weeks
+            </button>
+          }
+          <button type="button" class="btn btn-ghost btn-sm days-next" (click)="nextListPage()" [disabled]="loading()">
+            Next 2 weeks →
+          </button>
+        </div>
       </div>
     </div>
 
     <!-- Right column: manage (signed-in volunteer) -->
     <div class="side">
+      <!-- Desktop only: the companion panel for the calendar. On mobile the list
+           row handles sign up/remove inline, so this would strand the action at
+           the top of the page (the side column is order:-1 there). -->
       @if (selectedDate(); as sd) {
-          <div class="card day-panel">
+          <div class="card day-panel desktop-only">
             <h2>{{ labelFor(sd) }}</h2>
             @if (rosterFor(sd).length === 0) {
               <p class="muted">No one’s signed up yet — be the first!</p>
@@ -225,27 +285,6 @@
             }
           </div>
         }
-
-        <div class="card my-days">
-          <h2>My days</h2>
-          @if (myDayRows().length === 0) {
-            <p class="muted">
-              You’re not on any upcoming days yet. Pick a weekday on the calendar (or a day from the
-              list) to sign up.
-            </p>
-          } @else {
-            <ul>
-              @for (d of myDayRows(); track d.date) {
-                <li>
-                  <span class="day-label">{{ d.label }}</span>
-                  <button type="button" class="btn btn-ghost btn-sm" (click)="removeDay(d.date)" [disabled]="working()">
-                    Remove
-                  </button>
-                </li>
-              }
-            </ul>
-          }
-        </div>
 
         @if (myAccount(); as acct) {
           <div class="card my-account">

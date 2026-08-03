@@ -34,7 +34,8 @@ interface DayRow {
   count: number;
 }
 
-const WEEKDAYS_AHEAD = 15;
+/** Weekdays shown per page of the mobile list — two school weeks (Mon–Fri ×2). */
+const WEEKDAYS_PER_PAGE = 10;
 
 /** How far past the furthest-watched point a video may jump before we treat it
  *  as a fast-forward attempt and snap it back. Generous enough for normal
@@ -88,6 +89,8 @@ export class Schedule implements OnInit {
   protected readonly myDates = signal<string[]>([]);
   /** Day whose roster panel is open (logged-in). */
   protected readonly selectedDate = signal<string | null>(null);
+  /** Which two-week page the mobile list is showing (0 = starting today). */
+  protected readonly listPage = signal(0);
 
   // ---- Login flow ----
   protected readonly loginStep = signal<'email' | 'code'>('email');
@@ -107,6 +110,9 @@ export class Schedule implements OnInit {
   // ---- Action feedback (sign up / remove) ----
   protected readonly actionError = signal<string | null>(null);
   protected readonly working = signal(false);
+  /** Date whose sign-up/remove is in flight — lets the mobile list show progress
+   *  on the row that was tapped rather than on every row at once. */
+  protected readonly workingDate = signal<string | null>(null);
 
   // ---- My account (self-service edit) ----
   protected readonly shirtSizes = SHIRT_SIZES;
@@ -132,6 +138,7 @@ export class Schedule implements OnInit {
       if (now !== prev) {
         prev = now;
         this.selectedDate.set(null);
+        this.listPage.set(0);
         this.counts.set(new Map());
         this.roster.set(new Map());
         this.enrollment.set(null);
@@ -162,7 +169,13 @@ export class Schedule implements OnInit {
     const monthEnd = this.iso(
       new Date(this.calMonth().getFullYear(), this.calMonth().getMonth() + 1, 0),
     );
-    const to = monthEnd > this.addDays(today, 56) ? monthEnd : this.addDays(today, 56);
+    // Cover the calendar's month, the default 8-week window, and — if the mobile
+    // list has been paged forward — the page currently on screen.
+    const pageDays = this.weekdaysForPage(this.listPage());
+    const pageEnd = this.iso(pageDays[pageDays.length - 1]);
+    let to = this.addDays(today, 56);
+    if (monthEnd > to) to = monthEnd;
+    if (pageEnd > to) to = pageEnd;
     const from = today < this.iso(this.calMonth()) ? today : this.iso(this.calMonth());
     this.loadRange(from, to, true);
     if (this.auth.loggedIn()) {
@@ -306,7 +319,25 @@ export class Schedule implements OnInit {
     return this.selectedDate() === date;
   }
 
-  /** Mobile upcoming-days list (logged-out informational + logged-in pickable). */
+  /** The weekdays on one page of the mobile list, counting forward from today.
+   *  Page 0 is the next two school weeks, page 1 the two after that, and so on. */
+  private weekdaysForPage(page: number): Date[] {
+    const days: Date[] = [];
+    const cursor = new Date();
+    cursor.setHours(0, 0, 0, 0);
+    let skip = page * WEEKDAYS_PER_PAGE;
+    while (days.length < WEEKDAYS_PER_PAGE) {
+      const dow = cursor.getDay();
+      if (dow !== 0 && dow !== 6) {
+        if (skip > 0) skip--;
+        else days.push(new Date(cursor));
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return days;
+  }
+
+  /** Mobile upcoming-days list — one page (two weeks) at a time. */
   protected readonly upcomingDays = computed<DayRow[]>(() => {
     // depend on whichever map is active
     this.counts();
@@ -316,32 +347,37 @@ export class Schedule implements OnInit {
       month: 'short',
       day: 'numeric',
     });
-    const rows: DayRow[] = [];
-    const cursor = new Date();
-    cursor.setHours(0, 0, 0, 0);
-    while (rows.length < WEEKDAYS_AHEAD) {
-      const dow = cursor.getDay();
-      if (dow !== 0 && dow !== 6) {
-        const iso = this.iso(cursor);
-        rows.push({ date: iso, label: labelFmt.format(cursor), count: this.countFor(iso) });
-      }
-      cursor.setDate(cursor.getDate() + 1);
-    }
-    return rows;
+    return this.weekdaysForPage(this.listPage()).map((d) => {
+      const iso = this.iso(d);
+      return { date: iso, label: labelFmt.format(d), count: this.countFor(iso) };
+    });
   });
 
-  /** My upcoming days with friendly labels, for the "My days" panel. */
-  protected readonly myDayRows = computed<DayRow[]>(() => {
-    const labelFmt = new Intl.DateTimeFormat('en-US', {
-      weekday: 'long',
-      month: 'short',
-      day: 'numeric',
-    });
-    return this.myDates()
-      .filter((d) => d >= this.iso(new Date()))
-      .sort((a, b) => a.localeCompare(b))
-      .map((d) => ({ date: d, label: labelFmt.format(new Date(`${d}T00:00:00`)), count: 0 }));
+  /** "Aug 3 – Aug 14" for the current page, so paging has a visible anchor. */
+  protected readonly listRangeLabel = computed<string>(() => {
+    const days = this.weekdaysForPage(this.listPage());
+    const fmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
+    return `${fmt.format(days[0])} – ${fmt.format(days[days.length - 1])}`;
   });
+
+  protected nextListPage(): void {
+    this.listPage.update((p) => p + 1);
+    this.onListPageChange();
+  }
+
+  protected prevListPage(): void {
+    if (this.listPage() === 0) return;
+    this.listPage.update((p) => p - 1);
+    this.onListPageChange();
+  }
+
+  /** A page may fall outside the range already fetched, so load its span. */
+  private onListPageChange(): void {
+    this.selectedDate.set(null); // the expanded day isn't on this page anymore
+    this.actionError.set(null);
+    const days = this.weekdaysForPage(this.listPage());
+    this.loadRange(this.iso(days[0]), this.iso(days[days.length - 1]), true);
+  }
 
   protected labelFor(date: string): string {
     return new Intl.DateTimeFormat('en-US', {
@@ -362,14 +398,15 @@ export class Schedule implements OnInit {
   protected signUpDay(date: string): void {
     if (this.working()) return;
     this.working.set(true);
+    this.workingDate.set(date);
     this.actionError.set(null);
     this.myShifts.signUp(date).subscribe({
       next: () => {
-        this.working.set(false);
+        this.doneWorking();
         this.afterChange(date);
       },
       error: (err) => {
-        this.working.set(false);
+        this.doneWorking();
         this.actionError.set(err?.error?.errors?.[0] ?? 'Could not sign up. Please try again.');
       },
     });
@@ -378,20 +415,30 @@ export class Schedule implements OnInit {
   protected removeDay(date: string): void {
     if (this.working()) return;
     this.working.set(true);
+    this.workingDate.set(date);
     this.actionError.set(null);
     this.myShifts.remove(date).subscribe({
       next: () => {
-        this.working.set(false);
+        this.doneWorking();
         this.afterChange(date);
       },
       error: (err) => {
-        this.working.set(false);
+        this.doneWorking();
         this.actionError.set(err?.error?.errors?.[0] ?? 'Could not remove. Please try again.');
       },
     });
   }
 
-  /** Refresh the affected month + my-days after a sign up/remove. */
+  private doneWorking(): void {
+    this.working.set(false);
+    this.workingDate.set(null);
+  }
+
+  protected isWorking(date: string): boolean {
+    return this.workingDate() === date;
+  }
+
+  /** Refresh the affected month + my dates after a sign up/remove. */
   private afterChange(date: string): void {
     const d = new Date(`${date}T00:00:00`);
     const from = this.iso(new Date(d.getFullYear(), d.getMonth(), 1));
@@ -466,6 +513,7 @@ export class Schedule implements OnInit {
     this.auth.signOut();
     this.myDates.set([]);
     this.selectedDate.set(null);
+    this.listPage.set(0);
     this.enrollment.set(null);
     this.watchedTo.clear();
     this.myAccount.set(null);

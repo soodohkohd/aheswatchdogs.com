@@ -21,10 +21,8 @@
   align-items: start;
 }
 
-/* Mobile: the side column (sign-in / manage) first, then the calendar/list. */
-.side {
-  order: -1;
-}
+/* Mobile: source order — the upcoming-days list first (it's the reason you're
+ * on this page), then the account/manage cards below it. */
 
 .desktop-only {
   display: none;
@@ -42,10 +40,6 @@
   /* Logged out there's no calendar to align to — let the intro span full width. */
   .lede.lede-wide {
     max-width: none;
-  }
-  /* Desktop: calendar (left) then side column (right) in source order. */
-  .side {
-    order: 0;
   }
   .desktop-only {
     display: block;
@@ -80,6 +74,36 @@
 }
 
 /* ---- Mobile list ---- */
+.days-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.days-head h2 {
+  margin-bottom: 0;
+}
+
+.days-range {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.days-nav {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+/* Sits right when it's alone (page 0 has no Previous). */
+.days-next {
+  margin-left: auto;
+}
+
 .days ul {
   list-style: none;
   margin: 0;
@@ -87,10 +111,6 @@
 }
 
 .days li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
   padding: 0.6rem 0.5rem;
   border-bottom: 1px solid var(--line);
 }
@@ -104,9 +124,59 @@
   border-radius: 8px;
 }
 
+.day-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+/* The day itself is a toggle for the inline roster; the button beside it is the
+ * sign up / remove action. Reset the native button chrome. */
 .day-info {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 0.1rem;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.day-info .chev {
+  font-size: 0.7em;
+  color: var(--ink-soft);
+}
+
+.day-action {
+  flex-shrink: 0;
+}
+
+/* Inline roster, expanded under the day it belongs to. */
+.day-roster {
+  list-style: none;
+  margin: 0.5rem 0 0.15rem;
+  padding: 0;
+  font-size: 0.9rem;
+}
+
+.day-roster li {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.day-roster li:last-child {
+  border-bottom: 0;
+}
+
+.day-roster li.me {
+  font-weight: 600;
 }
 
 .day-label {
@@ -323,25 +393,6 @@
   width: 100%;
 }
 
-/* ---- My days ---- */
-.my-days ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.my-days li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.55rem 0.25rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.my-days li:last-child {
-  border-bottom: 0;
-}
 
 /* ---- Logged-out view: just the sign-in card, centered ---- */
 .signin-only {
